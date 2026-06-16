@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: catan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: catan
+      POSTGRES_PASSWORD: catan
+      POSTGRES_DB: catan
+    ports:
+      - "5432:5432"
+    volumes:
+      - catan-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  catan-pgdata:

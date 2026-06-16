@@ -1,0 +1,29 @@
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+*.tsbuildinfo
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# prisma local db artifacts (if using sqlite later)
+*.sqlite
+*.sqlite-journal
+
+# vite
+apps/web/dist/
