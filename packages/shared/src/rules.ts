@@ -5,9 +5,11 @@ import {
   cornersOfHex,
   edgesOfHex,
   edgesOfVertex,
+  parseHexKey,
   verticesOfEdge,
 } from './coords.js';
-import { RESOURCE_LIST } from './constants.js';
+import { RESOURCE_LIST, totalResources } from './constants.js';
+import { publicVictoryPoints } from './scoring.js';
 import type { GameState, Player, Resource, ResourceCounts } from './types.js';
 
 export function getPlayer(state: GameState, playerId: string): Player | undefined {
@@ -123,6 +125,30 @@ export function getBoardVertices(state: GameState): VertexId[] {
 }
 export function getBoardEdges(state: GameState): EdgeId[] {
   return [...boardSets(state).edges];
+}
+
+/**
+ * Players the given player may steal from if the robber is moved to `hex`:
+ * owners of an adjacent building who hold a card and (under the friendly-robber
+ * rule) are at or above the VP threshold.
+ */
+export function robberStealTargets(state: GameState, playerId: string, hex: string): string[] {
+  const owners = new Set<string>();
+  for (const v of cornersOfHex(parseHexKey(hex))) {
+    const b = state.buildings[v];
+    if (b && b.owner !== playerId) owners.add(b.owner);
+  }
+  return [...owners].filter((id) => {
+    const p = getPlayer(state, id);
+    if (!p || totalResources(p.resources) === 0) return false;
+    if (
+      state.settings.friendlyRobber &&
+      publicVictoryPoints(state, id) < state.settings.friendlyRobberThreshold
+    ) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /** Best bank-trade ratio per resource for a player (4, or 3/2 with ports). */

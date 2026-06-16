@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  username       String   @unique
+  passwordHash   String
+  displayName    String
+  preferredColor String   @default("red")
+  avatarKey      String?
+  wins           Int      @default(0)
+  losses         Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  gamePlayers GamePlayer[]
+  wonGames    Game[]       @relation("GameWinner")
+}
+
+model Game {
+  id           String    @id @default(cuid())
+  createdAt    DateTime  @default(now())
+  endedAt      DateTime?
+  settingsJson Json
+  mapId        String
+  winnerUserId String?
+  winner       User?     @relation("GameWinner", fields: [winnerUserId], references: [id])
+
+  players GamePlayer[]
+}
+
+model GamePlayer {
+  id                String  @id @default(cuid())
+  gameId            String
+  game              Game    @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User    @relation(fields: [userId], references: [id])
+  seatColor         String
+  finalVP           Int     @default(0)
+  knightsPlayed     Int     @default(0)
+  longestRoadLen    Int     @default(0)
+  hadLargestArmy    Boolean @default(false)
+  hadLongestRoad    Boolean @default(false)
+  roadsBuilt        Int     @default(0)
+  settlementsBuilt  Int     @default(0)
+  citiesBuilt       Int     @default(0)
+  devCardsBought    Int     @default(0)
+  diceHistogramJson Json
+
+  @@unique([gameId, userId])
+  @@index([userId])
+}

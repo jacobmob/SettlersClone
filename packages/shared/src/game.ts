@@ -1,6 +1,5 @@
 import { createBoard } from './board.js';
 import { BUILD_COSTS, STARTING_PIECES, buildDevDeck, emptyResourceCounts, fullBank, totalResources, RESOURCE_LIST } from './constants.js';
-import { cornersOfHex, parseHexKey } from './coords.js';
 import { drawBalanced, rollRandom, shuffledDiceDeck } from './dice.js';
 import { getMap } from './maps.js';
 import { Rng, makeSeed, randInt } from './rng.js';
@@ -13,13 +12,9 @@ import {
   hasResources,
   payCost,
   portRatios,
+  robberStealTargets,
 } from './rules.js';
-import {
-  getVictoryPoints,
-  publicVictoryPoints,
-  updateLargestArmy,
-  updateLongestRoad,
-} from './scoring.js';
+import { getVictoryPoints, updateLargestArmy, updateLongestRoad } from './scoring.js';
 import { normalizeSettings } from './settings.js';
 import type {
   Action,
@@ -375,7 +370,7 @@ function resolveRobber(
   s.robberHex = hex;
   s.stats.perPlayer[playerId]!.robberMoves++;
 
-  const targets = robberTargets(s, playerId, hex);
+  const targets = robberStealTargets(s, playerId, hex);
   if (stealFrom) {
     if (!targets.includes(stealFrom)) return 'You cannot steal from that player.';
     stealRandom(s, stealFrom, playerId);
@@ -386,25 +381,6 @@ function resolveRobber(
   }
   s.phase = s.hasRolled ? 'main' : 'rollDice';
   return null;
-}
-
-function robberTargets(s: GameState, playerId: string, hex: string): string[] {
-  const owners = new Set<string>();
-  for (const v of cornersOfHex(parseHexKey(hex))) {
-    const b = s.buildings[v];
-    if (b && b.owner !== playerId) owners.add(b.owner);
-  }
-  return [...owners].filter((id) => {
-    const p = getPlayer(s, id)!;
-    if (totalResources(p.resources) === 0) return false;
-    if (
-      s.settings.friendlyRobber &&
-      publicVictoryPoints(s, id) < s.settings.friendlyRobberThreshold
-    ) {
-      return false;
-    }
-    return true;
-  });
 }
 
 function stealRandom(s: GameState, fromId: string, toId: string): void {
