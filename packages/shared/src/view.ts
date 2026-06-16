@@ -50,6 +50,7 @@ export interface GameView {
   specialBuildIndex: number | null;
   dice: [number, number] | null;
   lastRoll: number | null;
+  hasRolled: boolean;
   robberHex: string;
   setupAwaiting: 'settlement' | 'road' | null;
   setupPlayerId: string | null;
@@ -115,6 +116,7 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     specialBuildIndex: state.specialBuildIndex,
     dice: state.dice,
     lastRoll: state.lastRoll,
+    hasRolled: state.hasRolled,
     robberHex: state.robberHex,
     setupAwaiting: state.setup ? (state.setup.awaitingRoad ? 'road' : 'settlement') : null,
     setupPlayerId: state.setup ? (state.setup.queue[state.setup.index] ?? null) : null,
