@@ -120,16 +120,18 @@ function autoPlacePorts(
   rng: Rng,
 ): Port[] {
   if (portBag.length === 0) return [];
-  const present = new Set(coords.map(hexKey));
+  const landLike = (h: Cube) => {
+    const t = tiles[hexKey(h)];
+    return !!t && t.type !== 'water';
+  };
 
-  // Collect unique coastal edges (a side facing a non-land position).
+  // Collect unique coastline edges (land-like on one side, sea/off-board on the other).
   const coastal = new Set<EdgeId>();
   for (const c of coords) {
+    if (!landLike(c)) continue;
     for (const e of edgesOfHex(c)) {
       const [a, b] = hexesOfEdge(e);
-      const aLand = present.has(hexKey(a!));
-      const bLand = present.has(hexKey(b!));
-      if (aLand !== bLand) coastal.add(e);
+      if (landLike(a!) !== landLike(b!)) coastal.add(e);
     }
   }
 

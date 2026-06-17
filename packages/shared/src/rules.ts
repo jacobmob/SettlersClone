@@ -5,6 +5,8 @@ import {
   cornersOfHex,
   edgesOfHex,
   edgesOfVertex,
+  hexKey,
+  hexesOfEdge,
   parseHexKey,
   verticesOfEdge,
 } from './coords.js';
@@ -34,9 +36,21 @@ export function vertexHasNeighborBuilding(state: GameState, vertex: VertexId): b
   return adjacentVertices(vertex).some((v) => state.buildings[v]);
 }
 
-/** A road edge the player owns that touches this vertex. */
+/** A road/ship the player owns that touches this vertex (any kind). */
 function playerRoadAtVertex(state: GameState, playerId: string, vertex: VertexId): boolean {
   return edgesOfVertex(vertex).some((e) => state.roads[e]?.owner === playerId);
+}
+
+/** A piece of the given kind the player owns that touches this vertex. */
+function playerPieceAtVertex(
+  state: GameState,
+  playerId: string,
+  vertex: VertexId,
+  kind: 'road' | 'ship',
+): boolean {
+  return edgesOfVertex(vertex).some(
+    (e) => state.roads[e]?.owner === playerId && state.roads[e]?.kind === kind,
+  );
 }
 
 export function canPlaceSettlement(
@@ -61,26 +75,56 @@ export function canPlaceRoad(
   isSetup: boolean,
   setupSettlement: VertexId | null,
 ): string | null {
-  if (!isEdgeOnBoard(state, edge)) return 'That road position is not on the board.';
-  if (state.roads[edge]) return 'There is already a road there.';
+  if (!isRoadEdge(state, edge)) return 'A road must go on a land edge.';
+  return canPlaceEdgePiece(state, playerId, edge, 'road', isSetup, setupSettlement);
+}
+
+/** Ships go on sea edges and connect via your ships or coastal buildings. */
+export function canPlaceShip(
+  state: GameState,
+  playerId: string,
+  edge: EdgeId,
+  isSetup: boolean,
+  setupSettlement: VertexId | null,
+): string | null {
+  if (!isShipEdge(state, edge)) return 'A ship must go on a sea edge.';
+  return canPlaceEdgePiece(state, playerId, edge, 'ship', isSetup, setupSettlement);
+}
+
+function canPlaceEdgePiece(
+  state: GameState,
+  playerId: string,
+  edge: EdgeId,
+  kind: 'road' | 'ship',
+  isSetup: boolean,
+  setupSettlement: VertexId | null,
+): string | null {
+  if (state.roads[edge]) return 'There is already a piece there.';
   const [a, b] = verticesOfEdge(edge);
 
   if (isSetup) {
-    // The setup road must touch the settlement just placed.
     if (setupSettlement && a !== setupSettlement && b !== setupSettlement)
-      return 'Your first roads must connect to the settlement you just placed.';
+      return 'Your first pieces must connect to the settlement you just placed.';
     return null;
   }
 
-  if (connectsToNetwork(state, playerId, a!) || connectsToNetwork(state, playerId, b!)) return null;
-  return 'A road must connect to your existing roads or buildings.';
+  if (connectsToNetwork(state, playerId, a!, kind) || connectsToNetwork(state, playerId, b!, kind))
+    return null;
+  return kind === 'ship'
+    ? 'A ship must connect to your ships or a coastal settlement.'
+    : 'A road must connect to your existing roads or buildings.';
 }
 
-/** Whether the player may extend a road from this vertex. */
-function connectsToNetwork(state: GameState, playerId: string, vertex: VertexId): boolean {
+/** Whether the player may extend a piece of `kind` from this vertex. */
+function connectsToNetwork(
+  state: GameState,
+  playerId: string,
+  vertex: VertexId,
+  kind: 'road' | 'ship',
+): boolean {
   const building = state.buildings[vertex];
-  if (building) return building.owner === playerId; // your own building, yes; opponent's blocks
-  return playerRoadAtVertex(state, playerId, vertex);
+  if (building) return building.owner === playerId; // your building joins road & ship routes
+  return playerPieceAtVertex(state, playerId, vertex, kind);
 }
 
 export function canBuildCity(
@@ -95,20 +139,43 @@ export function canBuildCity(
   return null;
 }
 
-// The set of legal vertices/edges is exactly the corners/sides of the board's
-// tiles. Topology depends only on the map layout, so cache per mapId.
-const boardCache = new Map<string, { vertices: Set<VertexId>; edges: Set<EdgeId> }>();
-function boardSets(state: GameState): { vertices: Set<VertexId>; edges: Set<EdgeId> } {
+// Board topology. A vertex is buildable iff it touches >=1 land-like tile
+// (resource/desert/gold), so open-ocean corners are excluded. Edges are split
+// into road edges (touch >=1 land-like tile) and ship edges (touch >=1 water
+// tile); coastal land|water edges are in both. Topology depends only on the map
+// layout, so it is cached per mapId.
+interface BoardSets {
+  vertices: Set<VertexId>;
+  roadEdges: Set<EdgeId>;
+  shipEdges: Set<EdgeId>;
+}
+const boardCache = new Map<string, BoardSets>();
+
+function isLandLike(state: GameState, h: { x: number; y: number; z: number }): boolean {
+  const t = state.tiles[hexKey(h)];
+  return !!t && t.type !== 'water';
+}
+function isWater(state: GameState, h: { x: number; y: number; z: number }): boolean {
+  return state.tiles[hexKey(h)]?.type === 'water';
+}
+
+function boardSets(state: GameState): BoardSets {
   const cached = boardCache.get(state.mapId);
   if (cached) return cached;
   const vertices = new Set<VertexId>();
-  const edges = new Set<EdgeId>();
+  const roadEdges = new Set<EdgeId>();
+  const shipEdges = new Set<EdgeId>();
   for (const tile of Object.values(state.tiles)) {
-    if (tile.type === 'water') continue;
-    for (const v of cornersOfHex(tile.coord)) vertices.add(v);
-    for (const e of edgesOfHex(tile.coord)) edges.add(e);
+    if (tile.type !== 'water') {
+      for (const v of cornersOfHex(tile.coord)) vertices.add(v);
+    }
+    for (const e of edgesOfHex(tile.coord)) {
+      const [a, b] = hexesOfEdge(e);
+      if (isLandLike(state, a!) || isLandLike(state, b!)) roadEdges.add(e);
+      if (isWater(state, a!) || isWater(state, b!)) shipEdges.add(e);
+    }
   }
-  const result = { vertices, edges };
+  const result = { vertices, roadEdges, shipEdges };
   boardCache.set(state.mapId, result);
   return result;
 }
@@ -116,15 +183,29 @@ function boardSets(state: GameState): { vertices: Set<VertexId>; edges: Set<Edge
 export function isVertexOnBoard(state: GameState, vertex: VertexId): boolean {
   return boardSets(state).vertices.has(vertex);
 }
+export function isRoadEdge(state: GameState, edge: EdgeId): boolean {
+  return boardSets(state).roadEdges.has(edge);
+}
+export function isShipEdge(state: GameState, edge: EdgeId): boolean {
+  return boardSets(state).shipEdges.has(edge);
+}
 export function isEdgeOnBoard(state: GameState, edge: EdgeId): boolean {
-  return boardSets(state).edges.has(edge);
+  const sets = boardSets(state);
+  return sets.roadEdges.has(edge) || sets.shipEdges.has(edge);
 }
 
 export function getBoardVertices(state: GameState): VertexId[] {
   return [...boardSets(state).vertices];
 }
+export function getRoadEdges(state: GameState): EdgeId[] {
+  return [...boardSets(state).roadEdges];
+}
+export function getShipEdges(state: GameState): EdgeId[] {
+  return [...boardSets(state).shipEdges];
+}
 export function getBoardEdges(state: GameState): EdgeId[] {
-  return [...boardSets(state).edges];
+  const sets = boardSets(state);
+  return [...new Set([...sets.roadEdges, ...sets.shipEdges])];
 }
 
 /**
@@ -184,13 +265,17 @@ export function distributeResources(state: GameState, roll: number): void {
     if (tile.number !== roll) continue;
     if (tile.type === 'desert' || tile.type === 'water') continue;
     if (state.robberHex === tile.id) continue;
-    const resource = tile.type as Resource;
     for (const vertex of cornersOfHex(tile.coord)) {
       const building = state.buildings[vertex];
       if (!building) continue;
       const amount = building.type === 'city' ? 2 : 1;
-      const map = demand[resource];
-      map.set(building.owner, (map.get(building.owner) ?? 0) + amount);
+      if (tile.type === 'gold') {
+        // Seafarers: gold fields let the owner pick any resource(s) later.
+        state.pendingGold[building.owner] = (state.pendingGold[building.owner] ?? 0) + amount;
+      } else {
+        const map = demand[tile.type as Resource];
+        map.set(building.owner, (map.get(building.owner) ?? 0) + amount);
+      }
     }
   }
 

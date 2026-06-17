@@ -17,7 +17,8 @@ export const RESOURCE_COLORS: Record<string, string> = {
   wheat: '#e6c34d',
   ore: '#7d8a99',
   desert: '#d9c79a',
-  water: '#3a6ea5',
+  water: '#2f5d8a',
+  gold: '#e3b53b',
 };
 
 export const RESOURCE_ICON: Record<string, string> = {

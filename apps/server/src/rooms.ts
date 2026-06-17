@@ -425,6 +425,9 @@ export class RoomManager {
       } else if (s.phase === 'discard') {
         const pid = Object.keys(s.pendingDiscards)[0]!;
         if (!this.applyServer(room, pid, autoDiscard(s, pid))) break;
+      } else if (s.phase === 'goldChoice') {
+        const pid = Object.keys(s.pendingGold)[0]!;
+        if (!this.applyServer(room, pid, autoGold(s, pid))) break;
       } else if (s.phase === 'moveRobber') {
         if (!this.applyServer(room, cur, autoRobber(s, cur))) break;
       } else if (s.phase === 'main') {
@@ -498,6 +501,24 @@ function autoDiscard(s: GameState, pid: string): Action {
     need--;
   }
   return { type: 'discard', resources: out };
+}
+
+function autoGold(s: GameState, pid: string): Action {
+  // Take the gold as whatever the bank has most of.
+  const need = s.pendingGold[pid] ?? 0;
+  const bank: ResourceCounts = { ...s.bank };
+  const out: Partial<ResourceCounts> = {};
+  const resources = Object.keys(bank) as (keyof ResourceCounts)[];
+  let taken = 0;
+  while (taken < need) {
+    resources.sort((a, b) => bank[b] - bank[a]);
+    const r = resources[0]!;
+    if (bank[r] <= 0) break;
+    out[r] = (out[r] ?? 0) + 1;
+    bank[r]--;
+    taken++;
+  }
+  return { type: 'chooseGold', resources: out };
 }
 
 function autoRobber(s: GameState, pid: string): Action {

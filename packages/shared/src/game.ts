@@ -1,11 +1,21 @@
 import { createBoard } from './board.js';
-import { BUILD_COSTS, STARTING_PIECES, buildDevDeck, emptyResourceCounts, fullBank, totalResources, RESOURCE_LIST } from './constants.js';
+import {
+  BUILD_COSTS,
+  RESOURCE_LIST,
+  SHIP_COST,
+  STARTING_PIECES,
+  buildDevDeck,
+  emptyResourceCounts,
+  fullBank,
+  totalResources,
+} from './constants.js';
 import { drawBalanced, rollRandom, shuffledDiceDeck } from './dice.js';
 import { getMap } from './maps.js';
 import { Rng, makeSeed, randInt } from './rng.js';
 import {
   canBuildCity,
   canPlaceRoad,
+  canPlaceShip,
   canPlaceSettlement,
   distributeResources,
   getPlayer,
@@ -113,6 +123,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     robberHex: board.robberHex,
     setup: { queue, index: 0, awaitingRoad: false, lastSettlement: null, round: 1 },
     pendingDiscards: {},
+    pendingGold: {},
     freeRoadsRemaining: 0,
     hasRolled: false,
     bank: fullBank(),
@@ -139,6 +150,10 @@ function log(s: GameState, type: string, message: string, playerId?: string): vo
   if (s.log.length > 200) s.log.shift();
 }
 
+function seafarers(s: GameState): boolean {
+  return s.settings.expansions.includes('seafarers');
+}
+
 /** Player allowed to take build/trade actions right now. */
 function actingPlayerId(s: GameState): string {
   if (s.phase === 'specialBuild' && s.specialBuildIndex !== null) {
@@ -163,7 +178,9 @@ function dispatch(s: GameState, playerId: string, action: Action): string | null
     case 'placeSettlement':
       return handleSetupSettlement(s, playerId, action.vertex);
     case 'placeRoad':
-      return handleSetupRoad(s, playerId, action.edge);
+      return handleSetupRoad(s, playerId, action.edge, 'road');
+    case 'placeShip':
+      return handleSetupRoad(s, playerId, action.edge, 'ship');
     case 'rollDice':
       return handleRoll(s, playerId);
     case 'discard':
@@ -175,7 +192,11 @@ function dispatch(s: GameState, playerId: string, action: Action): string | null
     case 'buildCity':
       return handleBuildCity(s, playerId, action.vertex);
     case 'buildRoad':
-      return handleBuildRoad(s, playerId, action.edge);
+      return handleBuildRoad(s, playerId, action.edge, 'road');
+    case 'buildShip':
+      return handleBuildRoad(s, playerId, action.edge, 'ship');
+    case 'chooseGold':
+      return handleChooseGold(s, playerId, action.resources);
     case 'buyDevCard':
       return handleBuyDevCard(s, playerId);
     case 'playKnight':
@@ -249,21 +270,30 @@ function parseVertexTiles(vertex: string): string[] {
   return vertex.split('|');
 }
 
-function handleSetupRoad(s: GameState, playerId: string, edge: string): string | null {
+function handleSetupRoad(
+  s: GameState,
+  playerId: string,
+  edge: string,
+  kind: 'road' | 'ship',
+): string | null {
   if (s.phase !== 'setup' || !s.setup) return 'Not in the setup phase.';
   if (s.setup.queue[s.setup.index] !== playerId) return 'It is not your turn to place.';
   if (!s.setup.awaitingRoad) return 'Place a settlement first.';
-  const err = canPlaceRoad(s, playerId, edge, true, s.setup.lastSettlement);
+  if (kind === 'ship' && !seafarers(s)) return 'Ships require the Seafarers expansion.';
+  const err =
+    kind === 'ship'
+      ? canPlaceShip(s, playerId, edge, true, s.setup.lastSettlement)
+      : canPlaceRoad(s, playerId, edge, true, s.setup.lastSettlement);
   if (err) return err;
 
   const player = getPlayer(s, playerId)!;
-  s.roads[edge] = { owner: playerId };
-  player.piecesLeft.road--;
+  s.roads[edge] = { owner: playerId, kind };
+  player.piecesLeft[kind]--;
   s.stats.perPlayer[playerId]!.roadsBuilt++;
   s.setup.awaitingRoad = false;
   s.setup.lastSettlement = null;
   s.setup.index++;
-  log(s, 'setup', `${player.name} placed a road.`, playerId);
+  log(s, 'setup', `${player.name} placed a ${kind}.`, playerId);
 
   if (s.setup.index >= s.setup.queue.length) {
     // Setup complete -> first player's turn.
@@ -317,8 +347,33 @@ function handleRoll(s: GameState, playerId: string): string | null {
     s.phase = Object.keys(s.pendingDiscards).length > 0 ? 'discard' : 'moveRobber';
   } else {
     distributeResources(s, sum);
-    s.phase = 'main';
+    s.phase = Object.keys(s.pendingGold).length > 0 ? 'goldChoice' : 'main';
   }
+  return null;
+}
+
+function handleChooseGold(
+  s: GameState,
+  playerId: string,
+  resources: Partial<ResourceCounts>,
+): string | null {
+  if (s.phase !== 'goldChoice') return 'No gold choice is required right now.';
+  const owed = s.pendingGold[playerId];
+  if (!owed) return 'You have no gold to collect.';
+  if (sumPartial(resources) !== owed) return `Choose exactly ${owed} resources.`;
+  for (const [res, n] of Object.entries(resources) as [Resource, number][]) {
+    if ((n ?? 0) < 0) return 'Invalid choice.';
+    if (s.bank[res] < (n ?? 0)) return 'The bank does not have that many.';
+  }
+  const player = getPlayer(s, playerId)!;
+  for (const [res, n] of Object.entries(resources) as [Resource, number][]) {
+    player.resources[res] += n ?? 0;
+    s.bank[res] -= n ?? 0;
+    s.stats.perPlayer[playerId]!.resourcesGained += n ?? 0;
+  }
+  delete s.pendingGold[playerId];
+  log(s, 'gold', `${player.name} collected ${owed} from a gold field.`, playerId);
+  if (Object.keys(s.pendingGold).length === 0) s.phase = 'main';
   return null;
 }
 
@@ -440,25 +495,35 @@ function handleBuildCity(s: GameState, playerId: string, vertex: string): string
   return checkWin(s, playerId);
 }
 
-function handleBuildRoad(s: GameState, playerId: string, edge: string): string | null {
+function handleBuildRoad(
+  s: GameState,
+  playerId: string,
+  edge: string,
+  kind: 'road' | 'ship',
+): string | null {
   const gate = ensureBuildPhase(s, playerId);
   if (gate) return gate;
+  if (kind === 'ship' && !seafarers(s)) return 'Ships require the Seafarers expansion.';
   const player = getPlayer(s, playerId)!;
-  if (player.piecesLeft.road <= 0) return 'No roads left to build.';
-  const err = canPlaceRoad(s, playerId, edge, false, null);
+  if (player.piecesLeft[kind] <= 0) return `No ${kind}s left to build.`;
+  const err =
+    kind === 'ship'
+      ? canPlaceShip(s, playerId, edge, false, null)
+      : canPlaceRoad(s, playerId, edge, false, null);
   if (err) return err;
-  if (!hasResources(player, BUILD_COSTS.road)) return 'Not enough resources.';
+  const cost = kind === 'ship' ? SHIP_COST : BUILD_COSTS.road;
+  if (!hasResources(player, cost)) return 'Not enough resources.';
 
-  payCost(s, player, BUILD_COSTS.road);
-  placeRoad(s, playerId, edge);
-  log(s, 'build', `${player.name} built a road.`, playerId);
+  payCost(s, player, cost);
+  placeRoad(s, playerId, edge, kind);
+  log(s, 'build', `${player.name} built a ${kind}.`, playerId);
   return checkWin(s, playerId);
 }
 
-function placeRoad(s: GameState, playerId: string, edge: string): void {
+function placeRoad(s: GameState, playerId: string, edge: string, kind: 'road' | 'ship'): void {
   const player = getPlayer(s, playerId)!;
-  s.roads[edge] = { owner: playerId };
-  player.piecesLeft.road--;
+  s.roads[edge] = { owner: playerId, kind };
+  player.piecesLeft[kind]--;
   s.stats.perPlayer[playerId]!.roadsBuilt++;
   updateLongestRoad(s);
 }
@@ -531,7 +596,7 @@ function handlePlayRoadBuilding(s: GameState, playerId: string, edges: string[])
     if (player.piecesLeft.road <= 0) break;
     const err = canPlaceRoad(s, playerId, edge, false, null);
     if (err) return err;
-    s.roads[edge] = { owner: playerId };
+    s.roads[edge] = { owner: playerId, kind: 'road' };
     player.piecesLeft.road--;
     s.stats.perPlayer[playerId]!.roadsBuilt++;
     placed.push(edge);

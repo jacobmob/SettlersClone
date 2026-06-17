@@ -8,11 +8,13 @@ import {
   type VertexId,
   canBuildCity,
   canPlaceRoad,
+  canPlaceShip,
   canPlaceSettlement,
   cornersOfHex,
   edgesOfVertex,
-  getBoardEdges,
   getBoardVertices,
+  getRoadEdges,
+  getShipEdges,
   parseHexKey,
 } from '@catan/shared';
 
@@ -45,8 +47,16 @@ export function legalSettlements(view: GameView, isSetup: boolean): VertexId[] {
 
 export function legalRoads(view: GameView, isSetup: boolean): EdgeId[] {
   const last = isSetup ? activeSetupSettlement(view) : null;
-  return getBoardEdges(asState(view)).filter(
+  return getRoadEdges(asState(view)).filter(
     (e) => canPlaceRoad(asState(view), view.you, e, isSetup, last) === null,
+  );
+}
+
+export function legalShips(view: GameView, isSetup: boolean): EdgeId[] {
+  if (!view.settings.expansions.includes('seafarers')) return [];
+  const last = isSetup ? activeSetupSettlement(view) : null;
+  return getShipEdges(asState(view)).filter(
+    (e) => canPlaceShip(asState(view), view.you, e, isSetup, last) === null,
   );
 }
 
