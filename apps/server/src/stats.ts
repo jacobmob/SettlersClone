@@ -39,25 +39,36 @@ statsRouter.get('/users/:id/stats', async (req, res) => {
     settlementsBuilt: 0,
     citiesBuilt: 0,
     devCardsBought: 0,
+    resourcesGained: 0,
+    robberMoves: 0,
     longestRoadAwards: 0,
     largestArmyAwards: 0,
     bestVP: 0,
+    avgVP: 0,
+    winRate: 0,
   };
   const diceHistogram: Record<number, number> = {};
+  let vpSum = 0;
   for (const r of myRows) {
     totals.knightsPlayed += r.knightsPlayed;
     totals.roadsBuilt += r.roadsBuilt;
     totals.settlementsBuilt += r.settlementsBuilt;
     totals.citiesBuilt += r.citiesBuilt;
     totals.devCardsBought += r.devCardsBought;
+    totals.resourcesGained += r.resourcesGained;
+    totals.robberMoves += r.robberMoves;
     if (r.hadLongestRoad) totals.longestRoadAwards++;
     if (r.hadLargestArmy) totals.largestArmyAwards++;
     totals.bestVP = Math.max(totals.bestVP, r.finalVP);
+    vpSum += r.finalVP;
     const hist = (r.diceHistogramJson ?? {}) as Record<string, number>;
     for (const [k, v] of Object.entries(hist)) {
       diceHistogram[Number(k)] = (diceHistogram[Number(k)] ?? 0) + v;
     }
   }
+  totals.avgVP = myRows.length ? Math.round((vpSum / myRows.length) * 10) / 10 : 0;
+  const decided = user.wins + user.losses;
+  totals.winRate = decided ? Math.round((user.wins / decided) * 100) : 0;
 
   // Head-to-head records against everyone they've shared a game with.
   const games = await prisma.game.findMany({

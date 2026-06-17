@@ -69,6 +69,7 @@ export class RoomManager {
   private userRoom = new Map<string, string>();
   private userSockets = new Map<string, Set<string>>();
   private socketUser = new Map<string, TokenPayload>();
+  private profiles = new Map<string, { displayName: string; avatarKey: string | null }>();
 
   constructor(private io: TypedServer) {}
 
@@ -79,6 +80,7 @@ export class RoomManager {
     const set = this.userSockets.get(user.userId) ?? new Set();
     set.add(socketId);
     this.userSockets.set(user.userId, set);
+    void this.loadProfile(user.userId);
 
     const room = this.roomOf(user.userId);
     if (room) {
@@ -329,15 +331,34 @@ export class RoomManager {
   private addMember(room: Room, user: TokenPayload, isHost: boolean): void {
     const used = new Set(room.members.map((m) => m.color));
     const color = PLAYER_COLORS.find((c) => !used.has(c)) ?? PLAYER_COLORS[0]!;
+    const profile = this.profiles.get(user.userId);
     room.members.push({
       userId: user.userId,
-      name: user.username,
+      name: profile?.displayName ?? user.username,
       color,
-      avatar: null,
+      avatar: profile?.avatarKey ?? null,
       ready: false,
       connected: true,
       isHost,
     });
+  }
+
+  /** Load a user's display name + avatar, then reflect it on any lobby seat. */
+  private async loadProfile(userId: string): Promise<void> {
+    try {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user) return;
+      this.profiles.set(userId, { displayName: user.displayName, avatarKey: user.avatarKey });
+      const room = this.roomOf(userId);
+      const member = room?.members.find((m) => m.userId === userId);
+      if (room && member && room.status === 'lobby') {
+        member.name = user.displayName;
+        member.avatar = user.avatarKey;
+        this.broadcastLobby(room);
+      }
+    } catch {
+      /* DB unavailable; fall back to token username */
+    }
   }
 
   private removeMember(room: Room, userId: string): void {
@@ -547,6 +568,8 @@ export class RoomManager {
               settlementsBuilt: s.stats.perPlayer[p.id]!.settlementsBuilt,
               citiesBuilt: s.stats.perPlayer[p.id]!.citiesBuilt,
               devCardsBought: s.stats.perPlayer[p.id]!.devCardsBought,
+              resourcesGained: s.stats.perPlayer[p.id]!.resourcesGained,
+              robberMoves: s.stats.perPlayer[p.id]!.robberMoves,
               diceHistogramJson: s.stats.perPlayer[p.id]!.rollHistogram,
             })),
           },

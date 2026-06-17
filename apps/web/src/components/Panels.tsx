@@ -1,6 +1,7 @@
 import type { GameView, Resource, TimerState } from '@catan/shared';
 import { useEffect, useState } from 'react';
 import { PIECE_COLORS, RESOURCE_ICON } from '../config.js';
+import { Avatar } from './Avatar.js';
 
 const RESOURCES: Resource[] = ['brick', 'wood', 'sheep', 'wheat', 'ore'];
 
@@ -26,6 +27,7 @@ export function PlayerList({ view }: { view: GameView }) {
             style={{ borderLeftColor: PIECE_COLORS[p.color] }}
           >
             <div className="row">
+              <Avatar avatar={p.avatar} name={p.name} color={PIECE_COLORS[p.color]!} size={24} />
               <strong>{p.name}</strong>
               {p.id === view.you && <span className="tag">you</span>}
               {!p.connected && <span className="tag">offline</span>}

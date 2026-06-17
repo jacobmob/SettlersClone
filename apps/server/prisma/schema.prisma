@@ -50,6 +50,8 @@ model GamePlayer {
   settlementsBuilt  Int     @default(0)
   citiesBuilt       Int     @default(0)
   devCardsBought    Int     @default(0)
+  resourcesGained   Int     @default(0)
+  robberMoves       Int     @default(0)
   diceHistogramJson Json
 
   @@unique([gameId, userId])

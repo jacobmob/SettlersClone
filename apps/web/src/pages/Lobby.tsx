@@ -1,4 +1,5 @@
 import { type GameSettings, PLAYER_COLORS, type PlayerColor } from '@catan/shared';
+import { Avatar } from '../components/Avatar.js';
 import { Radio } from '../components/Radio.js';
 import { PIECE_COLORS } from '../config.js';
 import { lobby } from '../socket.js';
@@ -35,7 +36,7 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
           <div className="members">
             {state.members.map((m) => (
               <div className="member" key={m.userId}>
-                <span className="swatch" style={{ background: PIECE_COLORS[m.color] }} />
+                <Avatar avatar={m.avatar} name={m.name} color={PIECE_COLORS[m.color]!} size={26} />
                 <span>{m.name}</span>
                 {m.isHost && <span className="tag">host</span>}
                 {m.userId === me.id && <span className="tag">you</span>}
