@@ -5,6 +5,7 @@ import { type Server as HttpServer, createServer } from 'node:http';
 import { type DefaultEventsMap, Server } from 'socket.io';
 import { authRouter, verifyToken } from './auth.js';
 import { env } from './env.js';
+import { mapsRouter } from './maps.js';
 import { RoomManager, type SocketData } from './rooms.js';
 import { statsRouter } from './stats.js';
 import { UPLOADS_DIR, uploadsRouter } from './uploads.js';
@@ -24,6 +25,7 @@ export function buildServer(): BuiltServer {
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', statsRouter);
+  app.use('/api', mapsRouter);
   app.use('/api', uploadsRouter);
   app.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -69,8 +71,8 @@ export function buildServer(): BuiltServer {
     socket.on('lobby:setColor', ({ color }) => manager.setColor(user.userId, color));
     socket.on('lobby:setReady', ({ ready }) => manager.setReady(user.userId, ready));
 
-    socket.on('lobby:start', (ack) => {
-      const res = manager.startGame(user.userId);
+    socket.on('lobby:start', async (ack) => {
+      const res = await manager.startGame(user.userId);
       if (res.ok) ack?.({ ok: true, data: {} });
       else ack?.({ ok: false, error: res.error });
     });

@@ -1,5 +1,5 @@
 import { type Cube, axialToCube, oddRToCube } from './coords.js';
-import type { HexDef, MapDef, PortType, TileType } from './types.js';
+import type { HexDef, MapDef, PortType, Resource, TileType } from './types.js';
 
 /** All axial coords within a hexagon of the given radius (centred at origin). */
 function hexagon(radius: number): Cube[] {
@@ -126,4 +126,58 @@ export const BUILT_IN_MAPS: Record<string, MapDef> = {
 
 export function getMap(id: string): MapDef {
   return BUILT_IN_MAPS[id] ?? BASE_3_4;
+}
+
+// --- custom maps (the in-app editor) ---
+
+export type EditorTileKind = 'water' | 'land' | 'desert' | 'gold';
+
+export interface EditorTile {
+  coord: Cube;
+  kind: EditorTileKind;
+}
+
+const STD_NUMBERS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
+const DEFAULT_PORTS: PortType[] = [
+  'any',
+  'any',
+  'any',
+  'brick',
+  'wood',
+  'sheep',
+  'wheat',
+  'ore',
+];
+
+function cycle<T>(source: readonly T[], n: number): T[] {
+  return Array.from({ length: n }, (_, i) => source[i % source.length]!);
+}
+
+/**
+ * Build a valid MapDef from painted editor tiles. 'land' tiles draw a random
+ * resource + number at game start (per the product requirement); water/desert/
+ * gold are fixed. Resource/number/port bags are generated balanced and sized to
+ * the painted board, so the result always satisfies createBoard.
+ */
+export function makeCustomMap(id: string, name: string, tiles: EditorTile[]): MapDef {
+  const hexes: HexDef[] = tiles.map((t) =>
+    t.kind === 'land' ? { coord: t.coord } : { coord: t.coord, fixedType: t.kind as TileType },
+  );
+  const landCount = tiles.filter((t) => t.kind === 'land').length;
+  const goldCount = tiles.filter((t) => t.kind === 'gold').length;
+  const resourceBag: TileType[] = cycle<Resource>(
+    ['wood', 'wheat', 'sheep', 'brick', 'ore'],
+    landCount,
+  );
+  const numberBag = cycle(STD_NUMBERS, landCount + goldCount);
+  return {
+    id,
+    name,
+    playerRange: [2, 6],
+    hexes,
+    ports: [],
+    resourceBag,
+    numberBag,
+    portBag: DEFAULT_PORTS,
+  };
 }

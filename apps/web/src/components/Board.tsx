@@ -86,6 +86,11 @@ export function Board({
                 </text>
               </>
             )}
+            {t.type === 'fog' && (
+              <text x={c.x} y={c.y + 8} textAnchor="middle" fontSize={22} fill="#8b96a6">
+                ?
+              </text>
+            )}
             {robber && (
               <circle cx={c.x} cy={c.y - 22} r={9} fill="#1a1a1a" stroke="#000" strokeWidth={2} />
             )}

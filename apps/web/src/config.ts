@@ -19,6 +19,8 @@ export const RESOURCE_COLORS: Record<string, string> = {
   desert: '#d9c79a',
   water: '#2f5d8a',
   gold: '#e3b53b',
+  fog: '#3a4250',
+  land: '#5b7f4e',
 };
 
 export const RESOURCE_ICON: Record<string, string> = {

@@ -51,9 +51,11 @@ export function createBoard(map: MapDef, rng: Rng): Board {
   const adjacency = buildAdjacency(coords);
   assignNumbers(tiles, numbered, [...map.numberBag], adjacency, rng);
 
-  // 3. Robber starts on the (first) desert.
+  // 3. Robber starts on the desert; if a custom map has none, tuck it on the
+  // sea (or the first tile) until someone rolls a 7.
   const desert = coords.find((c) => tiles[hexKey(c)]!.type === 'desert');
-  const robberHex = desert ? hexKey(desert) : hexKey(coords[0]!);
+  const water = coords.find((c) => tiles[hexKey(c)]!.type === 'water');
+  const robberHex = hexKey(desert ?? water ?? coords[0]!);
 
   // 4. Ports.
   const ports = map.ports.length

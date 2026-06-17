@@ -4,6 +4,8 @@ export type Resource = 'brick' | 'wood' | 'sheep' | 'wheat' | 'ore';
 export const RESOURCES: readonly Resource[] = ['brick', 'wood', 'sheep', 'wheat', 'ore'];
 
 export type TileType = Resource | 'desert' | 'water' | 'gold';
+/** View-only sentinel for an undiscovered tile under fog of war. */
+export type ViewTileType = TileType | 'fog';
 
 export type DevCardType =
   | 'knight'
@@ -32,6 +34,14 @@ export interface Tile {
   coord: Cube;
   type: TileType;
   /** Dice number; null for desert/water. */
+  number: number | null;
+}
+
+/** A tile as seen by a player (terrain may be hidden by fog of war). */
+export interface ViewTile {
+  id: string;
+  coord: Cube;
+  type: ViewTileType;
   number: number | null;
 }
 
