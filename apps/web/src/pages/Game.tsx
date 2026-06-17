@@ -13,6 +13,7 @@ import {
   labelDev,
 } from '../components/Modals.js';
 import { DiceTimer, GameLog, Hand, PlayerList } from '../components/Panels.js';
+import { Radio } from '../components/Radio.js';
 import {
   COSTS,
   canAfford,
@@ -145,10 +146,11 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
 
   return (
     <div className="game">
-      {/* left: players + log */}
+      {/* left: players + log + radio */}
       <div className="sidebar">
         <PlayerList view={view} />
         <GameLog view={view} />
+        <Radio />
       </div>
 
       {/* center: board */}

@@ -346,3 +346,33 @@ td {
   background: var(--accent-2);
   border-radius: 3px;
 }
+
+.radio-queue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow: auto;
+}
+.radio-track {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--panel-2);
+  border-radius: 6px;
+  font-size: 13px;
+}
+.radio-track.current {
+  outline: 1px solid var(--accent);
+}
+.upload-btn {
+  display: inline-block;
+  text-align: center;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+}

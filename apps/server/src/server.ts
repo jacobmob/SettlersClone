@@ -7,6 +7,7 @@ import { authRouter, verifyToken } from './auth.js';
 import { env } from './env.js';
 import { RoomManager, type SocketData } from './rooms.js';
 import { statsRouter } from './stats.js';
+import { UPLOADS_DIR, uploadsRouter } from './uploads.js';
 
 export interface BuiltServer {
   app: Express;
@@ -23,6 +24,8 @@ export function buildServer(): BuiltServer {
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
   app.use('/api/auth', authRouter);
   app.use('/api', statsRouter);
+  app.use('/api', uploadsRouter);
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   const httpServer = createServer(app);
   const io = new Server<ClientToServerEvents, ServerToClientEvents, DefaultEventsMap, SocketData>(
@@ -82,6 +85,12 @@ export function buildServer(): BuiltServer {
     });
 
     socket.on('game:sync', () => manager.sync(user.userId));
+
+    socket.on('radio:add', ({ title, url }) => manager.radioAdd(user.userId, title, url));
+    socket.on('radio:remove', ({ id }) => manager.radioRemove(user.userId, id));
+    socket.on('radio:play', () => manager.radioPlay(user.userId));
+    socket.on('radio:pause', ({ positionSec }) => manager.radioPause(user.userId, positionSec));
+    socket.on('radio:skip', ({ fromIndex }) => manager.radioSkip(user.userId, fromIndex));
 
     socket.on('disconnect', () => manager.unregisterSocket(socket.id));
   });

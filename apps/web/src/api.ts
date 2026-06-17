@@ -45,6 +45,31 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify(data) },
       token,
     ),
+  uploadRadio: async (token: string, file: File, title: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    const res = await fetch(`${SERVER_URL}/api/radio/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? 'Upload failed');
+    return body as { url: string; title: string };
+  },
+  uploadAvatar: async (token: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`${SERVER_URL}/api/profile/avatar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error ?? 'Upload failed');
+    return body as { url: string };
+  },
   userStats: (userId: string) =>
     request<{
       wins: number;

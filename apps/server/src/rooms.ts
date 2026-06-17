@@ -8,6 +8,7 @@ import {
   type NewPlayer,
   PLAYER_COLORS,
   type PlayerColor,
+  type RadioState,
   type ResourceCounts,
   type RoomSummary,
   type ServerToClientEvents,
@@ -57,9 +58,11 @@ interface Room {
   turnToken: string;
   turnDeadline: number | null;
   timer: TimerState;
+  radio: RadioState;
 }
 
 let roomSeq = 1;
+let trackSeq = 1;
 
 export class RoomManager {
   private rooms = new Map<string, Room>();
@@ -83,6 +86,7 @@ export class RoomManager {
       if (member) member.connected = true;
       this.broadcastLobby(room);
       if (room.game) this.sendGame(room, user.userId);
+      this.sendRadio(room, user.userId);
     }
   }
 
@@ -121,6 +125,7 @@ export class RoomManager {
       turnToken: '',
       turnDeadline: null,
       timer: { kind: null, deadline: null },
+      radio: { queue: [], currentIndex: -1, playing: false, positionSec: 0, updatedAt: Date.now() },
     };
     this.rooms.set(id, room);
     this.addMember(room, user, true);
@@ -144,7 +149,71 @@ export class RoomManager {
     this.addMember(room, user, false);
     this.userRoom.set(user.userId, roomId);
     this.broadcastLobby(room);
+    this.sendRadio(room, user.userId);
     return { ok: true };
+  }
+
+  // --- radio ---
+
+  radioControl(
+    userId: string,
+    fn: (radio: RadioState) => void,
+  ): void {
+    const room = this.roomOf(userId);
+    if (!room) return;
+    fn(room.radio);
+    this.broadcastRadio(room);
+  }
+
+  radioAdd(userId: string, title: string, url: string): void {
+    this.radioControl(userId, (radio) => {
+      radio.queue.push({ id: `t${trackSeq++}`, title: title.slice(0, 120), url, addedBy: userId });
+      if (radio.currentIndex === -1) radio.currentIndex = 0;
+    });
+  }
+
+  radioRemove(userId: string, id: string): void {
+    this.radioControl(userId, (radio) => {
+      const idx = radio.queue.findIndex((t) => t.id === id);
+      if (idx === -1) return;
+      radio.queue.splice(idx, 1);
+      if (idx < radio.currentIndex) radio.currentIndex--;
+      else if (idx === radio.currentIndex) {
+        radio.positionSec = 0;
+        radio.updatedAt = Date.now();
+      }
+      if (radio.currentIndex >= radio.queue.length) {
+        radio.currentIndex = radio.queue.length ? radio.queue.length - 1 : -1;
+      }
+    });
+  }
+
+  radioPlay(userId: string): void {
+    this.radioControl(userId, (radio) => {
+      if (radio.currentIndex === -1 && radio.queue.length) radio.currentIndex = 0;
+      if (radio.currentIndex === -1) return;
+      radio.playing = true;
+      radio.updatedAt = Date.now();
+    });
+  }
+
+  radioPause(userId: string, positionSec: number): void {
+    this.radioControl(userId, (radio) => {
+      radio.playing = false;
+      radio.positionSec = Math.max(0, positionSec);
+      radio.updatedAt = Date.now();
+    });
+  }
+
+  radioSkip(userId: string, fromIndex: number): void {
+    this.radioControl(userId, (radio) => {
+      if (fromIndex !== radio.currentIndex) return; // dedupe stale/auto skips
+      const next = radio.currentIndex + 1;
+      radio.currentIndex = next < radio.queue.length ? next : -1;
+      radio.playing = radio.currentIndex !== -1;
+      radio.positionSec = 0;
+      radio.updatedAt = Date.now();
+    });
   }
 
   leaveRoom(userId: string): void {
@@ -243,6 +312,7 @@ export class RoomManager {
     if (!room) return;
     this.broadcastLobby(room);
     if (room.game) this.sendGame(room, userId);
+    this.sendRadio(room, userId);
   }
 
   // --- internal helpers ---
@@ -333,6 +403,16 @@ export class RoomManager {
   private broadcastGame(room: Room): void {
     if (!room.game) return;
     for (const m of room.members) this.sendGame(room, m.userId);
+  }
+
+  private sendRadio(room: Room, userId: string): void {
+    for (const sid of this.userSockets.get(userId) ?? []) {
+      this.io.to(sid).emit('radio:state', room.radio);
+    }
+  }
+
+  private broadcastRadio(room: Room): void {
+    for (const m of room.members) this.sendRadio(room, m.userId);
   }
 
   // --- timers & auto-resolution ---

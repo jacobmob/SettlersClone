@@ -21,6 +21,7 @@ export function connectSocket(token: string): ClientSocket {
   const store = useStore.getState();
   socket.on('lobby:state', (lobby) => useStore.getState().setLobby(lobby));
   socket.on('game:state', ({ view, timer }) => useStore.getState().setGame(view, timer));
+  socket.on('radio:state', (radio) => useStore.getState().setRadio(radio));
   socket.on('toast', ({ type, text }) => store.pushToast(type, text));
   socket.on('connect', () => socket?.emit('game:sync'));
   socket.on('connect_error', (err) => store.pushToast('error', err.message));
@@ -55,3 +56,11 @@ export const lobby = {
 export function emitAction(action: Action): Promise<Ack<Record<string, never>>> {
   return new Promise((resolve) => ensure().emit('game:action', { action }, resolve));
 }
+
+export const radio = {
+  add: (title: string, url: string) => ensure().emit('radio:add', { title, url }),
+  remove: (id: string) => ensure().emit('radio:remove', { id }),
+  play: () => ensure().emit('radio:play'),
+  pause: (positionSec: number) => ensure().emit('radio:pause', { positionSec }),
+  skip: (fromIndex: number) => ensure().emit('radio:skip', { fromIndex }),
+};
