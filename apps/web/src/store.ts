@@ -1,4 +1,4 @@
-import type { GameView, LobbyState, TimerState } from '@catan/shared';
+import type { GameView, LobbyState, RadioState, TimerState } from '@catan/shared';
 import { create } from 'zustand';
 import type { PublicUser } from './api.js';
 
@@ -14,6 +14,7 @@ interface AppState {
   lobby: LobbyState | null;
   game: GameView | null;
   timer: TimerState | null;
+  radio: RadioState | null;
   toasts: Toast[];
 
   setAuth: (token: string, user: PublicUser) => void;
@@ -21,6 +22,7 @@ interface AppState {
   logout: () => void;
   setLobby: (lobby: LobbyState | null) => void;
   setGame: (game: GameView, timer: TimerState) => void;
+  setRadio: (radio: RadioState) => void;
   clearRoom: () => void;
   pushToast: (type: Toast['type'], text: string) => void;
   dismissToast: (id: number) => void;
@@ -34,6 +36,7 @@ export const useStore = create<AppState>((set) => ({
   lobby: null,
   game: null,
   timer: null,
+  radio: null,
   toasts: [],
 
   setAuth: (token, user) => {
@@ -43,11 +46,12 @@ export const useStore = create<AppState>((set) => ({
   setUser: (user) => set({ user }),
   logout: () => {
     localStorage.removeItem('catan_token');
-    set({ token: null, user: null, lobby: null, game: null, timer: null });
+    set({ token: null, user: null, lobby: null, game: null, timer: null, radio: null });
   },
   setLobby: (lobby) => set({ lobby }),
   setGame: (game, timer) => set({ game, timer }),
-  clearRoom: () => set({ lobby: null, game: null, timer: null }),
+  setRadio: (radio) => set({ radio }),
+  clearRoom: () => set({ lobby: null, game: null, timer: null, radio: null }),
   pushToast: (type, text) =>
     set((s) => ({ toasts: [...s.toasts, { id: toastSeq++, type, text }] })),
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

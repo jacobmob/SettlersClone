@@ -1,4 +1,5 @@
 import { type GameSettings, PLAYER_COLORS, type PlayerColor } from '@catan/shared';
+import { Radio } from '../components/Radio.js';
 import { PIECE_COLORS } from '../config.js';
 import { lobby } from '../socket.js';
 import { useStore } from '../store.js';
@@ -190,6 +191,10 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
             </div>
           </div>
           <p className="muted">0 disables a timer. Friendly robber protects players under {s.friendlyRobberThreshold} VP.</p>
+        </div>
+
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <Radio />
         </div>
       </div>
     </div>
