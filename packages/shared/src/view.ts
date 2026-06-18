@@ -2,10 +2,14 @@ import { hexKey, hexNeighbors, hexesOfVertex } from './coords.js';
 import { totalResources } from './constants.js';
 import { getVictoryPoints, publicVictoryPoints } from './scoring.js';
 import type {
+  CommodityCounts,
   DevCardType,
+  EventDieFace,
   GamePhase,
   GameSettings,
   GameState,
+  ImprovementTrack,
+  Knight,
   LogEntry,
   PlayerColor,
   Port,
@@ -27,10 +31,15 @@ export interface PublicPlayer {
   /** Total unplayed development cards (hidden identities). */
   devCardCount: number;
   playedKnights: number;
-  piecesLeft: { settlement: number; city: number; road: number; ship: number };
+  piecesLeft: { settlement: number; city: number; road: number; ship: number; knight: number };
   victoryPoints: number; // public VP only
+  // Cities & Knights (public)
+  improvements: Record<ImprovementTrack, number>;
+  defenderPoints: number;
+  commodityCount: number;
   // Present only for the viewing player:
   resources?: ResourceCounts;
+  commodities?: CommodityCounts;
   devCards?: DevCardType[];
   newDevCards?: DevCardType[];
   hasPlayedDevCardThisTurn?: boolean;
@@ -45,6 +54,7 @@ export interface GameView {
   ports: Port[];
   buildings: GameState['buildings'];
   roads: Record<string, Road>;
+  knights: Record<string, Knight>;
   players: PublicPlayer[];
   order: string[];
   currentPlayerIndex: number;
@@ -67,6 +77,10 @@ export interface GameView {
   winner: string | null;
   turnNumber: number;
   pendingGold: Record<string, number>;
+  // Cities & Knights
+  eventDie: EventDieFace | null;
+  barbarianPosition: number;
+  metropolis: Record<ImprovementTrack, string | null>;
   // viewer-specific
   you: string;
   yourVictoryPoints: number; // includes hidden VP cards
@@ -94,9 +108,13 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
       playedKnights: p.playedKnights,
       piecesLeft: p.piecesLeft,
       victoryPoints: publicVictoryPoints(state, p.id),
+      improvements: p.improvements,
+      defenderPoints: p.defenderPoints,
+      commodityCount: p.commodities.paper + p.commodities.cloth + p.commodities.coin,
     };
     if (p.id === viewerId) {
       base.resources = p.resources;
+      base.commodities = p.commodities;
       base.devCards = p.devCards;
       base.newDevCards = p.newDevCards;
       base.hasPlayedDevCardThisTurn = p.hasPlayedDevCardThisTurn;
@@ -115,6 +133,7 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     ports: state.ports,
     buildings: state.buildings,
     roads: state.roads,
+    knights: state.knights,
     players,
     order: state.order,
     currentPlayerIndex: state.currentPlayerIndex,
@@ -137,6 +156,9 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     winner: state.winner,
     turnNumber: state.turnNumber,
     pendingGold: state.pendingGold,
+    eventDie: state.eventDie,
+    barbarianPosition: state.barbarianPosition,
+    metropolis: state.metropolis,
     you: viewerId,
     yourVictoryPoints: getVictoryPoints(state, viewerId, true),
     yourPendingDiscard: state.pendingDiscards[viewerId] ?? 0,

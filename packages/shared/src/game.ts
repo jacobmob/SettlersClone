@@ -1,15 +1,29 @@
 import { createBoard } from './board.js';
 import {
+  BARBARIAN_MAX,
   BUILD_COSTS,
+  KNIGHT_ACTIVATE_COST,
+  KNIGHT_COST,
+  MAX_IMPROVEMENT,
+  MAX_KNIGHT_LEVEL,
   RESOURCE_LIST,
   SHIP_COST,
   STARTING_PIECES,
+  TRACK_COMMODITY,
   buildDevDeck,
+  emptyCommodityCounts,
   emptyResourceCounts,
   fullBank,
+  improvementCost,
   totalResources,
 } from './constants.js';
-import { drawBalanced, rollRandom, shuffledDiceDeck } from './dice.js';
+import {
+  canBuildKnight,
+  isCitiesKnights,
+  resolveBarbarianAttack,
+  updateMetropolis,
+} from './citiesKnights.js';
+import { drawBalanced, rollEventDie, rollRandom, shuffledDiceDeck } from './dice.js';
 import { getMap } from './maps.js';
 import { Rng, makeSeed, randInt } from './rng.js';
 import {
@@ -32,6 +46,7 @@ import type {
   DevCardType,
   GameSettings,
   GameState,
+  ImprovementTrack,
   Player,
   PlayerColor,
   PlayerStats,
@@ -92,6 +107,9 @@ export function createGame(opts: CreateGameOptions): GameState {
     hasPlayedDevCardThisTurn: false,
     piecesLeft: { ...STARTING_PIECES },
     connected: true,
+    commodities: emptyCommodityCounts(),
+    improvements: { trade: 0, politics: 0, science: 0 },
+    defenderPoints: 0,
   }));
 
   const order = players.map((p) => p.id);
@@ -117,6 +135,7 @@ export function createGame(opts: CreateGameOptions): GameState {
     ports: board.ports,
     buildings: {},
     roads: {},
+    knights: {},
     players,
     order,
     currentPlayerIndex: 0,
@@ -145,6 +164,9 @@ export function createGame(opts: CreateGameOptions): GameState {
     winner: null,
     turnNumber: 0,
     rngState,
+    eventDie: null,
+    barbarianPosition: 0,
+    metropolis: { trade: null, politics: null, science: null },
   };
 }
 
@@ -220,6 +242,14 @@ function dispatch(s: GameState, playerId: string, action: Action): string | null
       return handleAcceptTradeWith(s, playerId, action.playerId);
     case 'cancelTrade':
       return handleCancelTrade(s, playerId);
+    case 'improveCity':
+      return handleImproveCity(s, playerId, action.track);
+    case 'buildKnight':
+      return handleBuildKnight(s, playerId, action.vertex);
+    case 'activateKnight':
+      return handleActivateKnight(s, playerId, action.vertex);
+    case 'promoteKnight':
+      return handlePromoteKnight(s, playerId, action.vertex);
     case 'endTurn':
       return handleEndTurn(s, playerId);
     case 'requestSpecialBuild':
@@ -337,6 +367,43 @@ function handleRoll(s: GameState, playerId: string): string | null {
   const ps = s.stats.perPlayer[playerId]!;
   ps.rollHistogram[sum] = (ps.rollHistogram[sum] ?? 0) + 1;
   log(s, 'roll', `${getPlayer(s, playerId)!.name} rolled ${sum}.`, playerId);
+
+  // Cities & Knights: roll the event die and advance / unleash the barbarians.
+  // (Coloured faces draw progress cards, which arrive in a later phase.)
+  if (isCitiesKnights(s)) {
+    const ev = rollEventDie(s.rngState);
+    s.rngState = ev.rngState;
+    s.eventDie = ev.face;
+    if (ev.face === 'barbarian') {
+      s.barbarianPosition += 1;
+      if (s.barbarianPosition >= BARBARIAN_MAX) {
+        const outcome = resolveBarbarianAttack(s);
+        if (outcome.defended) {
+          log(
+            s,
+            'barbarian',
+            outcome.defenders.length
+              ? `Barbarians repelled! Defender of Catan: ${outcome.defenders
+                  .map((id) => getPlayer(s, id)!.name)
+                  .join(', ')}.`
+              : 'The barbarians attacked but there was nothing to defend.',
+          );
+        } else {
+          log(
+            s,
+            'barbarian',
+            `Barbarians sacked a city of ${outcome.losers
+              .map((id) => getPlayer(s, id)!.name)
+              .join(', ')}!`,
+          );
+        }
+      } else {
+        log(s, 'barbarian', `The barbarians advance (${s.barbarianPosition}/${BARBARIAN_MAX}).`);
+      }
+    }
+  } else {
+    s.eventDie = null;
+  }
 
   if (sum === 7) {
     // Determine who must discard.
@@ -531,9 +598,80 @@ function placeRoad(s: GameState, playerId: string, edge: string, kind: 'road' | 
   updateLongestRoad(s);
 }
 
+// --- cities & knights ---
+
+function handleImproveCity(
+  s: GameState,
+  playerId: string,
+  track: ImprovementTrack,
+): string | null {
+  if (!isCitiesKnights(s)) return 'City improvements need Cities & Knights.';
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const player = getPlayer(s, playerId)!;
+  const level = player.improvements[track];
+  if (level >= MAX_IMPROVEMENT) return 'That track is already at the maximum level.';
+  const commodity = TRACK_COMMODITY[track];
+  const cost = improvementCost(level);
+  if (player.commodities[commodity] < cost) return `You need ${cost} ${commodity}.`;
+  player.commodities[commodity] -= cost;
+  player.improvements[track] = level + 1;
+  updateMetropolis(s);
+  log(s, 'improve', `${player.name} advanced ${track} to level ${level + 1}.`, playerId);
+  return checkWin(s, playerId);
+}
+
+function handleBuildKnight(s: GameState, playerId: string, vertex: string): string | null {
+  if (!isCitiesKnights(s)) return 'Knights need Cities & Knights.';
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const player = getPlayer(s, playerId)!;
+  if (player.piecesLeft.knight <= 0) return 'No knights left to build.';
+  const err = canBuildKnight(s, playerId, vertex);
+  if (err) return err;
+  if (!hasResources(player, KNIGHT_COST)) return 'A knight costs 1 ore and 1 sheep.';
+  payCost(s, player, KNIGHT_COST);
+  s.knights[vertex] = { owner: playerId, level: 1, active: false };
+  player.piecesLeft.knight--;
+  log(s, 'knight', `${player.name} recruited a knight.`, playerId);
+  return null;
+}
+
+function handleActivateKnight(s: GameState, playerId: string, vertex: string): string | null {
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const knight = s.knights[vertex];
+  if (!knight || knight.owner !== playerId) return 'That is not your knight.';
+  if (knight.active) return 'That knight is already active.';
+  const player = getPlayer(s, playerId)!;
+  if (!hasResources(player, KNIGHT_ACTIVATE_COST)) return 'Activating a knight costs 1 wheat.';
+  payCost(s, player, KNIGHT_ACTIVATE_COST);
+  knight.active = true;
+  log(s, 'knight', `${player.name} activated a knight.`, playerId);
+  return null;
+}
+
+function handlePromoteKnight(s: GameState, playerId: string, vertex: string): string | null {
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const knight = s.knights[vertex];
+  if (!knight || knight.owner !== playerId) return 'That is not your knight.';
+  if (knight.level >= MAX_KNIGHT_LEVEL) return 'That knight is already mighty.';
+  const player = getPlayer(s, playerId)!;
+  // Promoting to mighty (level 3) requires Politics improvement of at least 2.
+  if (knight.level + 1 === MAX_KNIGHT_LEVEL && player.improvements.politics < 2)
+    return 'Reach Politics level 2 to train a mighty knight.';
+  if (!hasResources(player, KNIGHT_COST)) return 'Promoting a knight costs 1 ore and 1 sheep.';
+  payCost(s, player, KNIGHT_COST);
+  knight.level += 1;
+  log(s, 'knight', `${player.name} promoted a knight.`, playerId);
+  return null;
+}
+
 // --- dev cards ---
 
 function handleBuyDevCard(s: GameState, playerId: string): string | null {
+  if (isCitiesKnights(s)) return 'Develop your cities and knights instead of buying cards.';
   if (s.phase !== 'main' && s.phase !== 'specialBuild') return 'You cannot buy a card right now.';
   if (actingPlayerId(s) !== playerId) return 'It is not your turn.';
   if (s.devDeck.length === 0) return 'The development deck is empty.';

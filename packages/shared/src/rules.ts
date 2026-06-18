@@ -10,7 +10,7 @@ import {
   parseHexKey,
   verticesOfEdge,
 } from './coords.js';
-import { RESOURCE_LIST, totalResources } from './constants.js';
+import { RESOURCE_LIST, TERRAIN_COMMODITY, totalResources } from './constants.js';
 import { publicVictoryPoints } from './scoring.js';
 import type { GameState, Player, Resource, ResourceCounts } from './types.js';
 
@@ -125,6 +125,13 @@ function connectsToNetwork(
   const building = state.buildings[vertex];
   if (building) return building.owner === playerId; // your building joins road & ship routes
   return playerPieceAtVertex(state, playerId, vertex, kind);
+}
+
+/** Whether a vertex is part of the player's network (own building or road there). */
+export function isConnectedToPlayer(state: GameState, playerId: string, vertex: VertexId): boolean {
+  const b = state.buildings[vertex];
+  if (b) return b.owner === playerId;
+  return edgesOfVertex(vertex).some((e) => state.roads[e]?.owner === playerId);
 }
 
 export function canBuildCity(
@@ -253,6 +260,7 @@ export function portRatios(state: GameState, playerId: string): Record<Resource,
  * it, nobody gets that resource; a sole claimant takes whatever remains.
  */
 export function distributeResources(state: GameState, roll: number): void {
+  const ck = state.settings.expansions.includes('citiesAndKnights');
   const demand: Record<Resource, Map<string, number>> = {
     brick: new Map(),
     wood: new Map(),
@@ -268,13 +276,22 @@ export function distributeResources(state: GameState, roll: number): void {
     for (const vertex of cornersOfHex(tile.coord)) {
       const building = state.buildings[vertex];
       if (!building) continue;
-      const amount = building.type === 'city' ? 2 : 1;
+      const isCity = building.type === 'city';
       if (tile.type === 'gold') {
         // Seafarers: gold fields let the owner pick any resource(s) later.
-        state.pendingGold[building.owner] = (state.pendingGold[building.owner] ?? 0) + amount;
+        state.pendingGold[building.owner] = (state.pendingGold[building.owner] ?? 0) + (isCity ? 2 : 1);
+        continue;
+      }
+      const resource = tile.type as Resource;
+      const commodity = ck && isCity ? TERRAIN_COMMODITY[resource] : undefined;
+      if (commodity) {
+        // C&K cities on forest/mountain/pasture: 1 resource + 1 commodity.
+        addDemand(demand[resource], building.owner, 1);
+        const p = getPlayer(state, building.owner);
+        if (p) p.commodities[commodity] += 1;
       } else {
-        const map = demand[tile.type as Resource];
-        map.set(building.owner, (map.get(building.owner) ?? 0) + amount);
+        // settlements: 1; cities: 2 (base, and C&K fields/hills).
+        addDemand(demand[resource], building.owner, isCity ? 2 : 1);
       }
     }
   }
@@ -292,6 +309,10 @@ export function distributeResources(state: GameState, roll: number): void {
     }
     // otherwise: contested shortage -> no one receives this resource
   }
+}
+
+function addDemand(map: Map<string, number>, owner: string, amount: number): void {
+  map.set(owner, (map.get(owner) ?? 0) + amount);
 }
 
 function grant(state: GameState, map: Map<string, number>, resource: Resource): void {

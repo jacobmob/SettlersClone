@@ -1,11 +1,13 @@
-import { type EdgeId, SHIP_COST, type VertexId } from '@catan/shared';
+import { type EdgeId, KNIGHT_COST, SHIP_COST, type VertexId } from '@catan/shared';
 import { useMemo, useState } from 'react';
 import { Board, type BoardMode } from '../components/Board.js';
+import { CitiesKnights } from '../components/CitiesKnights.js';
 import {
   BankTradeModal,
   DiscardModal,
   GameOverModal,
   GoldChoiceModal,
+  KnightModal,
   MonopolyModal,
   ProposeTradeModal,
   StealModal,
@@ -17,9 +19,11 @@ import { Radio } from '../components/Radio.js';
 import {
   COSTS,
   canAfford,
+  isCK,
   isMyTurn,
   landTiles,
   legalCities,
+  legalKnightSpots,
   legalRoads,
   legalSettlements,
   legalShips,
@@ -41,6 +45,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
   const [steal, setSteal] = useState<{ hex: string; targets: { id: string; name: string }[] } | null>(
     null,
   );
+  const [knightVertex, setKnightVertex] = useState<string | null>(null);
   const [modal, setModal] = useState<null | 'bank' | 'propose' | 'yop' | 'mono'>(null);
 
   const me = getMe(view);
@@ -60,6 +65,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
   const legalVertices = useMemo(() => {
     if (boardMode === 'settlement') return new Set(legalSettlements(view, isSetup));
     if (boardMode === 'city') return new Set(legalCities(view));
+    if (boardMode === 'knight') return new Set(legalKnightSpots(view));
     return new Set<VertexId>();
   }, [view, boardMode, isSetup]);
 
@@ -85,6 +91,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
     if (boardMode === 'settlement')
       emitAction(isSetup ? { type: 'placeSettlement', vertex: v } : { type: 'buildSettlement', vertex: v });
     else if (boardMode === 'city') emitAction({ type: 'buildCity', vertex: v });
+    else if (boardMode === 'knight') emitAction({ type: 'buildKnight', vertex: v });
     reset();
   };
 
@@ -164,6 +171,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
           onVertex={onVertex}
           onEdge={onEdge}
           onTile={onTile}
+          onKnight={setKnightVertex}
         />
       </div>
 
@@ -171,6 +179,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       <div className="sidebar">
         <DiceTimer view={view} timer={timer} />
         <Hand view={view} />
+        <CitiesKnights view={view} />
 
         <div className="actionbar">
           {view.phase === 'rollDice' && isCurrent && !view.hasRolled && (
@@ -207,12 +216,21 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
               <button disabled={!canAfford(view, COSTS.city)} onClick={() => setUiMode('city')}>
                 City
               </button>
-              <button
-                disabled={!canAfford(view, COSTS.devCard) || view.devDeckCount === 0}
-                onClick={() => emitAction({ type: 'buyDevCard' })}
-              >
-                Buy dev
-              </button>
+              {isCK(view) ? (
+                <button
+                  disabled={!canAfford(view, KNIGHT_COST) || me.piecesLeft.knight <= 0}
+                  onClick={() => setUiMode('knight')}
+                >
+                  Knight
+                </button>
+              ) : (
+                <button
+                  disabled={!canAfford(view, COSTS.devCard) || view.devDeckCount === 0}
+                  onClick={() => emitAction({ type: 'buyDevCard' })}
+                >
+                  Buy dev
+                </button>
+              )}
               <button onClick={() => setModal('bank')}>Bank trade</button>
               {view.phase === 'main' && (
                 <button onClick={() => setModal('propose')}>Propose trade</button>
@@ -291,6 +309,9 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       {/* modals */}
       {view.yourPendingDiscard > 0 && <DiscardModal view={view} />}
       {view.yourPendingGold > 0 && <GoldChoiceModal view={view} />}
+      {knightVertex && (
+        <KnightModal view={view} vertex={knightVertex} onClose={() => setKnightVertex(null)} />
+      )}
       {steal && (
         <StealModal
           targets={steal.targets}

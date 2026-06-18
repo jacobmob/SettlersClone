@@ -3,6 +3,22 @@ import type { Cube, EdgeId, VertexId } from './coords.js';
 export type Resource = 'brick' | 'wood' | 'sheep' | 'wheat' | 'ore';
 export const RESOURCES: readonly Resource[] = ['brick', 'wood', 'sheep', 'wheat', 'ore'];
 
+// --- Cities & Knights ---
+export type Commodity = 'paper' | 'cloth' | 'coin';
+export const COMMODITIES: readonly Commodity[] = ['paper', 'cloth', 'coin'];
+export type CommodityCounts = Record<Commodity, number>;
+
+export type ImprovementTrack = 'trade' | 'politics' | 'science';
+export const IMPROVEMENT_TRACKS: readonly ImprovementTrack[] = ['trade', 'politics', 'science'];
+
+export type EventDieFace = 'barbarian' | 'trade' | 'politics' | 'science';
+
+export interface Knight {
+  owner: string;
+  level: number; // 1 basic, 2 strong, 3 mighty
+  active: boolean;
+}
+
 export type TileType = Resource | 'desert' | 'water' | 'gold';
 /** View-only sentinel for an undiscovered tile under fog of war. */
 export type ViewTileType = TileType | 'fog';
@@ -77,8 +93,12 @@ export interface Player {
   newDevCards: DevCardType[];
   playedKnights: number;
   hasPlayedDevCardThisTurn: boolean;
-  piecesLeft: { settlement: number; city: number; road: number; ship: number };
+  piecesLeft: { settlement: number; city: number; road: number; ship: number; knight: number };
   connected: boolean;
+  // Cities & Knights
+  commodities: CommodityCounts;
+  improvements: Record<ImprovementTrack, number>;
+  defenderPoints: number;
 }
 
 export type GamePhase =
@@ -162,6 +182,8 @@ export interface GameState {
   ports: Port[];
   buildings: Record<VertexId, Building>;
   roads: Record<EdgeId, Road>;
+  /** Cities & Knights: knight pieces on vertices, keyed by vertex id. */
+  knights: Record<VertexId, Knight>;
 
   players: Player[];
   order: string[];
@@ -203,6 +225,12 @@ export interface GameState {
   winner: string | null;
   turnNumber: number;
   rngState: number;
+
+  // Cities & Knights
+  eventDie: EventDieFace | null;
+  barbarianPosition: number;
+  /** Holder of each discipline's metropolis (highest improvement >= 4). */
+  metropolis: Record<ImprovementTrack, string | null>;
 }
 
 // --- Actions (player intents) ---
@@ -234,6 +262,10 @@ export type Action =
   | { type: 'respondTrade'; accept: boolean }
   | { type: 'acceptTradeWith'; playerId: string }
   | { type: 'cancelTrade' }
+  | { type: 'improveCity'; track: ImprovementTrack }
+  | { type: 'buildKnight'; vertex: VertexId }
+  | { type: 'activateKnight'; vertex: VertexId }
+  | { type: 'promoteKnight'; vertex: VertexId }
   | { type: 'endTurn' }
   | { type: 'requestSpecialBuild' }
   | { type: 'endSpecialBuild' };

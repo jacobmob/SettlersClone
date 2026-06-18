@@ -254,6 +254,49 @@ export function ProposeTradeModal({ view, onClose }: { view: GameView; onClose: 
   );
 }
 
+export function KnightModal({
+  view,
+  vertex,
+  onClose,
+}: {
+  view: GameView;
+  vertex: string;
+  onClose: () => void;
+}) {
+  const knight = view.knights[vertex];
+  if (!knight) return null;
+  return (
+    <Modal title={`Knight (level ${knight.level}${knight.active ? ', active' : ', inactive'})`}>
+      <div className="col">
+        {!knight.active && (
+          <button
+            className="accent"
+            onClick={() => {
+              emitAction({ type: 'activateKnight', vertex });
+              onClose();
+            }}
+          >
+            Activate (1 🌾)
+          </button>
+        )}
+        {knight.level < 3 && (
+          <button
+            onClick={() => {
+              emitAction({ type: 'promoteKnight', vertex });
+              onClose();
+            }}
+          >
+            Promote (1 ⛰️ + 1 🐑)
+          </button>
+        )}
+        <button className="ghost" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 export function GameOverModal({ view, onLeave }: { view: GameView; onLeave: () => void }) {
   const winner = view.players.find((p) => p.id === view.winner);
   const rows = view.order.map((id) => {

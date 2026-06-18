@@ -1,12 +1,17 @@
 import {
   BUILD_COSTS,
+  type Commodity,
   type EdgeId,
   type GameState,
   type GameView,
+  type ImprovementTrack,
+  KNIGHT_COST,
   type Resource,
   type ResourceCounts,
+  TRACK_COMMODITY,
   type VertexId,
   canBuildCity,
+  canBuildKnight,
   canPlaceRoad,
   canPlaceShip,
   canPlaceSettlement,
@@ -15,6 +20,7 @@ import {
   getBoardVertices,
   getRoadEdges,
   getShipEdges,
+  improvementCost,
   parseHexKey,
 } from '@catan/shared';
 
@@ -101,4 +107,29 @@ export function robberTargets(view: GameView, hex: string): { id: string; name: 
     .map((p) => ({ id: p.id, name: p.name }));
 }
 
-export const COSTS = BUILD_COSTS;
+export const COSTS = { ...BUILD_COSTS, knight: KNIGHT_COST };
+
+// --- Cities & Knights ---
+
+export function isCK(view: GameView): boolean {
+  return view.settings.expansions.includes('citiesAndKnights');
+}
+
+export function legalKnightSpots(view: GameView): VertexId[] {
+  return getBoardVertices(asState(view)).filter(
+    (v) => canBuildKnight(asState(view), view.you, v) === null,
+  );
+}
+
+/** Commodity cost to advance a track, or null if maxed / unaffordable. */
+export function improveInfo(
+  view: GameView,
+  track: ImprovementTrack,
+): { cost: number; commodity: Commodity; affordable: boolean } | null {
+  const level = me(view).improvements[track];
+  if (level >= 5) return null;
+  const commodity = TRACK_COMMODITY[track];
+  const cost = improvementCost(level);
+  const have = me(view).commodities?.[commodity] ?? 0;
+  return { cost, commodity, affordable: have >= cost };
+}

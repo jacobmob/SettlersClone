@@ -21,6 +21,12 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
   const s = state.settings;
 
   const set = (patch: Partial<GameSettings>) => isHost && lobby.updateSettings(patch);
+  const toggleExp = (exp: string, on: boolean) => {
+    const next = new Set(s.expansions);
+    if (on) next.add(exp);
+    else next.delete(exp);
+    return [...next];
+  };
   const takenColors = new Set(state.members.filter((m) => m.userId !== me.id).map((m) => m.color));
 
   const start = async () => {
@@ -201,8 +207,22 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
                 disabled={!isHost}
                 onChange={(e) =>
                   set({
-                    expansions: e.target.checked ? ['seafarers'] : [],
+                    expansions: toggleExp('seafarers', e.target.checked),
                     mapId: e.target.checked ? 'seafarers-1' : 'base-3-4',
+                  })
+                }
+              />
+            </div>
+            <div className="setting">
+              <label>Cities &amp; Knights</label>
+              <input
+                type="checkbox"
+                checked={s.expansions.includes('citiesAndKnights')}
+                disabled={!isHost}
+                onChange={(e) =>
+                  set({
+                    expansions: toggleExp('citiesAndKnights', e.target.checked),
+                    victoryPoints: e.target.checked ? 13 : 10,
                   })
                 }
               />

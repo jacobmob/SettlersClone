@@ -5,6 +5,7 @@ import {
   VP_CITY,
   VP_LARGEST_ARMY,
   VP_LONGEST_ROAD,
+  VP_METROPOLIS,
   VP_SETTLEMENT,
 } from './constants.js';
 import type { GameState } from './types.js';
@@ -135,6 +136,12 @@ export function getVictoryPoints(
   let vp = settlements * VP_SETTLEMENT + cities * VP_CITY;
   if (state.longestRoadHolder === playerId) vp += VP_LONGEST_ROAD;
   if (state.largestArmyHolder === playerId) vp += VP_LARGEST_ARMY;
+  // Cities & Knights: metropolises (+2 each) and Defender of Catan points.
+  for (const track of ['trade', 'politics', 'science'] as const) {
+    if (state.metropolis[track] === playerId) vp += VP_METROPOLIS;
+  }
+  const ckPlayer = state.players.find((p) => p.id === playerId);
+  if (ckPlayer) vp += ckPlayer.defenderPoints;
   if (includeHidden) {
     const player = state.players.find((p) => p.id === playerId);
     if (player) {
