@@ -1,10 +1,12 @@
 import {
   type Action,
+  BUILT_IN_MAPS,
   type ClientToServerEvents,
   type GameSettings,
   type GameState,
   type GameStatePayload,
   type LobbyState,
+  type MapDef,
   type NewPlayer,
   PLAYER_COLORS,
   type PlayerColor,
@@ -270,7 +272,7 @@ export class RoomManager {
     this.broadcastLobby(room);
   }
 
-  startGame(userId: string): { ok: true } | { ok: false; error: string } {
+  async startGame(userId: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const room = this.roomOf(userId);
     if (!room) return { ok: false, error: 'You are not in a room.' };
     if (!this.isHost(room, userId)) return { ok: false, error: 'Only the host can start.' };
@@ -278,6 +280,18 @@ export class RoomManager {
     if (room.members.length < 2) return { ok: false, error: 'Need at least 2 players.' };
     if (!room.members.every((m) => m.ready || m.isHost))
       return { ok: false, error: 'All players must be ready.' };
+
+    // Resolve a custom map definition if the host picked one.
+    let mapDef: MapDef | undefined;
+    if (!BUILT_IN_MAPS[room.settings.mapId]) {
+      try {
+        const custom = await prisma.customMap.findUnique({ where: { id: room.settings.mapId } });
+        if (!custom) return { ok: false, error: 'That custom map no longer exists.' };
+        mapDef = custom.def as unknown as MapDef;
+      } catch {
+        return { ok: false, error: 'Could not load the selected map.' };
+      }
+    }
 
     const players: NewPlayer[] = room.members.map((m) => ({
       id: m.userId,
@@ -287,7 +301,7 @@ export class RoomManager {
       avatar: m.avatar,
     }));
     room.settings = normalizeSettings({ ...room.settings, maxPlayers: room.members.length });
-    room.game = createGame({ id: room.id, settings: room.settings, players });
+    room.game = createGame({ id: room.id, settings: room.settings, players, mapDef });
     room.status = 'active';
     this.afterChange(room);
     return { ok: true };

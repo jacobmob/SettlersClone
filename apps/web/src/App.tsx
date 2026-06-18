@@ -4,6 +4,7 @@ import { Auth } from './pages/Auth.js';
 import { GameScreen } from './pages/Game.js';
 import { Home } from './pages/Home.js';
 import { Lobby } from './pages/Lobby.js';
+import { MapEditor } from './pages/MapEditor.js';
 import { Profile } from './pages/Profile.js';
 import { Toasts } from './pages/Toasts.js';
 import { connectSocket, disconnectSocket, lobby as lobbyApi } from './socket.js';
@@ -11,7 +12,7 @@ import { useStore } from './store.js';
 
 export function App() {
   const { token, user, lobby, game, setAuth, setUser, logout } = useStore();
-  const [nav, setNav] = useState<'home' | 'profile'>('home');
+  const [nav, setNav] = useState<'home' | 'profile' | 'editor'>('home');
   const [booting, setBooting] = useState(true);
 
   useEffect(() => {
@@ -43,7 +44,8 @@ export function App() {
   if (game) screen = <GameScreen onLeave={leaveRoom} />;
   else if (lobby) screen = <Lobby onLeave={leaveRoom} />;
   else if (nav === 'profile') screen = <Profile userId={user.id} onClose={() => setNav('home')} />;
-  else screen = <Home onProfile={() => setNav('profile')} />;
+  else if (nav === 'editor') screen = <MapEditor onClose={() => setNav('home')} />;
+  else screen = <Home onProfile={() => setNav('profile')} onEditor={() => setNav('editor')} />;
 
   return (
     <div className="app">

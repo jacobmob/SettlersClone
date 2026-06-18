@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { lobby } from '../socket.js';
 import { useStore } from '../store.js';
 
-export function Home({ onProfile }: { onProfile: () => void }) {
+export function Home({ onProfile, onEditor }: { onProfile: () => void; onEditor: () => void }) {
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const user = useStore((s) => s.user)!;
 
@@ -32,6 +32,9 @@ export function Home({ onProfile }: { onProfile: () => void }) {
         <span className="spacer" />
         <button className="ghost" onClick={onProfile}>
           My stats ({user.wins}W / {user.losses}L)
+        </button>
+        <button className="ghost" onClick={onEditor}>
+          Map editor
         </button>
         <button className="accent" onClick={create}>
           + New game

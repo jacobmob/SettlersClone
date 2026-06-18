@@ -1,4 +1,6 @@
 import { type GameSettings, PLAYER_COLORS, type PlayerColor } from '@catan/shared';
+import { useEffect, useState } from 'react';
+import { type CustomMapSummary, api } from '../api.js';
 import { Avatar } from '../components/Avatar.js';
 import { Radio } from '../components/Radio.js';
 import { PIECE_COLORS } from '../config.js';
@@ -8,7 +10,13 @@ import { useStore } from '../store.js';
 export function Lobby({ onLeave }: { onLeave: () => void }) {
   const state = useStore((s) => s.lobby)!;
   const me = useStore((s) => s.user)!;
+  const token = useStore((s) => s.token)!;
   const isHost = state.hostUserId === me.id;
+  const [customMaps, setCustomMaps] = useState<CustomMapSummary[]>([]);
+
+  useEffect(() => {
+    api.listMaps(token).then(setCustomMaps).catch(() => undefined);
+  }, [token]);
   const myMember = state.members.find((m) => m.userId === me.id);
   const s = state.settings;
 
@@ -90,6 +98,15 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
                 <option value="base-3-4">Base (3-4)</option>
                 <option value="base-5-6">Base (5-6)</option>
                 <option value="seafarers-1">Seafarers — Home Island</option>
+                {customMaps.length > 0 && (
+                  <optgroup label="Custom maps">
+                    {customMaps.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.owner})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
             <div className="setting">
@@ -188,6 +205,15 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
                     mapId: e.target.checked ? 'seafarers-1' : 'base-3-4',
                   })
                 }
+              />
+            </div>
+            <div className="setting">
+              <label>Fog of war</label>
+              <input
+                type="checkbox"
+                checked={s.fogOfWar}
+                disabled={!isHost}
+                onChange={(e) => set({ fogOfWar: e.target.checked })}
               />
             </div>
           </div>

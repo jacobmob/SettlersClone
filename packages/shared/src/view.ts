@@ -1,3 +1,4 @@
+import { hexKey, hexNeighbors, hexesOfVertex } from './coords.js';
 import { totalResources } from './constants.js';
 import { getVictoryPoints, publicVictoryPoints } from './scoring.js';
 import type {
@@ -10,8 +11,8 @@ import type {
   Port,
   ResourceCounts,
   Road,
-  Tile,
   TradeOffer,
+  ViewTile,
 } from './types.js';
 
 export interface PublicPlayer {
@@ -40,7 +41,7 @@ export interface GameView {
   phase: GamePhase;
   settings: GameSettings;
   mapId: string;
-  tiles: Record<string, Tile>;
+  tiles: Record<string, ViewTile>;
   ports: Port[];
   buildings: GameState['buildings'];
   roads: Record<string, Road>;
@@ -103,12 +104,14 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     return base;
   });
 
+  const tiles = redactTiles(state, viewerId);
+
   return {
     id: state.id,
     phase: state.phase,
     settings: state.settings,
     mapId: state.mapId,
-    tiles: state.tiles,
+    tiles,
     ports: state.ports,
     buildings: state.buildings,
     roads: state.roads,
@@ -139,4 +142,30 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     yourPendingDiscard: state.pendingDiscards[viewerId] ?? 0,
     yourPendingGold: state.pendingGold[viewerId] ?? 0,
   };
+}
+
+/**
+ * Fog of war: sea is always visible (so placement stays valid), but the terrain
+ * type and number of land tiles are hidden until the viewer has a building on or
+ * next to them. Without fog, tiles pass through unchanged.
+ */
+function redactTiles(state: GameState, viewerId: string): Record<string, ViewTile> {
+  if (!state.settings.fogOfWar) return state.tiles;
+
+  // Reveal each land tile under or adjacent to one of the viewer's buildings.
+  const revealed = new Set<string>();
+  for (const [vertex, building] of Object.entries(state.buildings)) {
+    if (building.owner !== viewerId) continue;
+    for (const h of hexesOfVertex(vertex)) {
+      revealed.add(hexKey(h));
+      for (const n of hexNeighbors(h)) revealed.add(hexKey(n));
+    }
+  }
+
+  const out: Record<string, ViewTile> = {};
+  for (const [id, tile] of Object.entries(state.tiles)) {
+    if (tile.type === 'water' || revealed.has(id)) out[id] = tile;
+    else out[id] = { id: tile.id, coord: tile.coord, type: 'fog', number: null };
+  }
+  return out;
 }

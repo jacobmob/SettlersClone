@@ -20,6 +20,18 @@ model User {
 
   gamePlayers GamePlayer[]
   wonGames    Game[]       @relation("GameWinner")
+  customMaps  CustomMap[]
+}
+
+model CustomMap {
+  id        String   @id @default(cuid())
+  name      String
+  ownerId   String
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  def       Json
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
 }
 
 model Game {

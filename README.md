@@ -116,13 +116,13 @@ Per-package, e.g. `pnpm --filter @catan/shared test`.
 These are intentionally **not** in this milestone, but the data models and
 game-logic seams are built to absorb them:
 
-- **Expansions** (Cities & Knights, Seafarers, …) — `GameSettings.expansions[]`
-  exists and the reducer already dispatches by action type.
-- **Custom map editor + water/islands** — `MapDef` is a general tile-coordinate
-  list consumed by `createBoard`; resources/numbers are randomized at game start.
-- **Fog of war** — reuses `redactStateForPlayer`.
-- **Synced radio** (upload/queue songs) — its own socket namespace + table; the
-  lobby/game rooms already exist.
-- **Uploaded avatars** and richer stats dashboards.
+- **Cities & Knights** expansion — `GameSettings.expansions[]` exists and the
+  reducer already dispatches by action type.
 - **Installable desktop package** (Electron/Tauri wrapping the web client).
+
+Already shipped in follow-up PRs: the **Seafarers** expansion (ships, sea/gold
+tiles), a **synced radio**, **uploaded avatars** + richer stats, and a
+**custom map editor with optional fog of war** (paint water/islands, save maps,
+and play them — land resources/numbers are randomized at game start; fog hides
+undiscovered terrain via `redactStateForPlayer`).
 ```

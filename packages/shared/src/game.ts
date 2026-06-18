@@ -35,6 +35,7 @@ import type {
   Player,
   PlayerColor,
   PlayerStats,
+  MapDef,
   Resource,
   ResourceCounts,
 } from './types.js';
@@ -53,6 +54,8 @@ export interface CreateGameOptions {
   settings: Partial<GameSettings>;
   players: NewPlayer[];
   seed?: number;
+  /** Custom map definition (from the editor); overrides settings.mapId lookup. */
+  mapDef?: MapDef;
 }
 
 function emptyStats(): PlayerStats {
@@ -70,7 +73,7 @@ function emptyStats(): PlayerStats {
 
 export function createGame(opts: CreateGameOptions): GameState {
   const settings = normalizeSettings(opts.settings);
-  const map = getMap(settings.mapId);
+  const map = opts.mapDef ?? getMap(settings.mapId);
   const seed = opts.seed ?? makeSeed();
   const rng = new Rng(seed);
   const board = createBoard(map, rng);
