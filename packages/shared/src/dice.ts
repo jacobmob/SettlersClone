@@ -1,4 +1,20 @@
 import { Rng, randInt } from './rng.js';
+import type { EventDieFace } from './types.js';
+
+/** The Cities & Knights event die: 3 barbarian faces + one per discipline. */
+const EVENT_DIE_FACES: EventDieFace[] = [
+  'barbarian',
+  'barbarian',
+  'barbarian',
+  'trade',
+  'politics',
+  'science',
+];
+
+export function rollEventDie(rngState: number): { face: EventDieFace; rngState: number } {
+  const r = randInt(rngState, 6);
+  return { face: EVENT_DIE_FACES[r.value]!, rngState: r.state };
+}
 
 /** The 36-outcome multiset of two-dice sums, used by "balanced" mode. */
 export function buildDiceDeck(): number[] {

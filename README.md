@@ -116,13 +116,15 @@ Per-package, e.g. `pnpm --filter @catan/shared test`.
 These are intentionally **not** in this milestone, but the data models and
 game-logic seams are built to absorb them:
 
-- **Cities & Knights** expansion — `GameSettings.expansions[]` exists and the
-  reducer already dispatches by action type.
+- **Cities & Knights — Phase 2:** progress-card decks (the coloured event-die
+  faces are rolled but draw nothing yet) and advanced knight actions
+  (move/displace/chase the robber).
 - **Installable desktop package** (Electron/Tauri wrapping the web client).
 
 Already shipped in follow-up PRs: the **Seafarers** expansion (ships, sea/gold
-tiles), a **synced radio**, **uploaded avatars** + richer stats, and a
-**custom map editor with optional fog of war** (paint water/islands, save maps,
-and play them — land resources/numbers are randomized at game start; fog hides
-undiscovered terrain via `redactStateForPlayer`).
+tiles), a **synced radio**, **uploaded avatars** + richer stats, a **custom map
+editor with optional fog of war**, and **Cities & Knights — Phase 1**
+(commodities + city production, the three improvement tracks with metropolises,
+the event die + barbarian track, and knights you build/activate/promote to
+defend Catan).
 ```

@@ -10,7 +10,7 @@ import { PIECE_COLORS, RESOURCE_COLORS, RESOURCE_ICON } from '../config.js';
 
 const SIZE = 46;
 
-export type BoardMode = 'none' | 'settlement' | 'city' | 'road' | 'ship' | 'robber';
+export type BoardMode = 'none' | 'settlement' | 'city' | 'road' | 'ship' | 'robber' | 'knight';
 
 interface Props {
   view: GameView;
@@ -21,6 +21,7 @@ interface Props {
   onVertex: (v: VertexId) => void;
   onEdge: (e: EdgeId) => void;
   onTile: (hex: string) => void;
+  onKnight: (v: VertexId) => void;
 }
 
 function hexCorners(cx: number, cy: number): string {
@@ -41,6 +42,7 @@ export function Board({
   onVertex,
   onEdge,
   onTile,
+  onKnight,
 }: Props) {
   const tiles = Object.values(view.tiles);
   const centers = tiles.map((t) => hexToPixel(t.coord, SIZE));
@@ -168,8 +170,33 @@ export function Board({
         );
       })}
 
-      {/* legal vertex highlights */}
-      {(mode === 'settlement' || mode === 'city') &&
+      {/* knights */}
+      {Object.entries(view.knights).map(([vertex, k]) => {
+        const p = vertexToPixel(vertex, SIZE);
+        const color = ownerColor(k.owner);
+        const mine = k.owner === view.you;
+        return (
+          <g
+            key={`kn-${vertex}`}
+            style={{ cursor: mine ? 'pointer' : 'default' }}
+            onClick={mine ? () => onKnight(vertex) : undefined}
+            opacity={k.active ? 1 : 0.5}
+          >
+            <polygon
+              points={`${p.x},${p.y - 9} ${p.x + 8},${p.y + 6} ${p.x - 8},${p.y + 6}`}
+              fill={color}
+              stroke={k.active ? '#fff' : '#000'}
+              strokeWidth={k.active ? 2 : 1}
+            />
+            <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize={9} fontWeight={700} fill="#111">
+              {k.level}
+            </text>
+          </g>
+        );
+      })}
+
+      {/* legal vertex highlights (settlement / city / knight) */}
+      {(mode === 'settlement' || mode === 'city' || mode === 'knight') &&
         [...legalVertices].map((vertex) => {
           const p = vertexToPixel(vertex, SIZE);
           return (
@@ -178,7 +205,7 @@ export function Board({
               cx={p.x}
               cy={p.y}
               r={9}
-              fill="var(--accent)"
+              fill={mode === 'knight' ? '#b06bd6' : 'var(--accent)'}
               opacity={0.5}
               stroke="#fff"
               className="vertex-spot"

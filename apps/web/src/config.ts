@@ -30,3 +30,16 @@ export const RESOURCE_ICON: Record<string, string> = {
   wheat: '🌾',
   ore: '⛰️',
 };
+
+export const COMMODITY_ICON: Record<string, string> = {
+  paper: '📜',
+  cloth: '🧵',
+  coin: '🪙',
+};
+
+/** Improvement track -> commodity that advances it. */
+export const TRACK_INFO: Record<string, { label: string; commodity: string; color: string }> = {
+  science: { label: 'Science', commodity: 'paper', color: '#3fa34d' },
+  trade: { label: 'Trade', commodity: 'cloth', color: '#e6c34d' },
+  politics: { label: 'Politics', commodity: 'coin', color: '#3a7bd5' },
+};
