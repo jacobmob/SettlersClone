@@ -87,6 +87,7 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
               <select value={s.mapId} disabled={!isHost} onChange={(e) => set({ mapId: e.target.value })}>
                 <option value="base-3-4">Base (3-4)</option>
                 <option value="base-5-6">Base (5-6)</option>
+                <option value="seafarers-1">Seafarers — Home Island</option>
               </select>
             </div>
             <div className="setting">
@@ -171,6 +172,20 @@ export function Lobby({ onLeave }: { onLeave: () => void }) {
                 checked={s.hideBankCards}
                 disabled={!isHost}
                 onChange={(e) => set({ hideBankCards: e.target.checked })}
+              />
+            </div>
+            <div className="setting">
+              <label>Seafarers (ships + sea)</label>
+              <input
+                type="checkbox"
+                checked={s.expansions.includes('seafarers')}
+                disabled={!isHost}
+                onChange={(e) =>
+                  set({
+                    expansions: e.target.checked ? ['seafarers'] : [],
+                    mapId: e.target.checked ? 'seafarers-1' : 'base-3-4',
+                  })
+                }
               />
             </div>
           </div>

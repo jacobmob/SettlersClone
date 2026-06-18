@@ -1,11 +1,13 @@
-import { BUILD_COSTS } from './constants.js';
+import { BUILD_COSTS, SHIP_COST } from './constants.js';
 import type { EdgeId, VertexId } from './coords.js';
 import {
   canBuildCity,
   canPlaceRoad,
+  canPlaceShip,
   canPlaceSettlement,
-  getBoardEdges,
   getBoardVertices,
+  getRoadEdges,
+  getShipEdges,
   getPlayer,
   hasResources,
 } from './rules.js';
@@ -15,6 +17,7 @@ export interface ValidActions {
   isYourTurn: boolean;
   canRoll: boolean;
   mustDiscard: number;
+  mustChooseGold: number;
   mustMoveRobber: boolean;
   canBuyDevCard: boolean;
   canEndTurn: boolean;
@@ -23,9 +26,11 @@ export interface ValidActions {
   buildSettlement: VertexId[];
   buildCity: VertexId[];
   buildRoad: EdgeId[];
+  buildShip: EdgeId[];
   setupAction: 'settlement' | 'road' | null;
   setupSettlementSpots: VertexId[];
   setupRoadSpots: EdgeId[];
+  setupShipSpots: EdgeId[];
 }
 
 /**
@@ -40,10 +45,12 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
   const isActing = acting === playerId;
   const player = getPlayer(state, playerId);
 
+  const seafarers = state.settings.expansions.includes('seafarers');
   const result: ValidActions = {
     isYourTurn: isActing,
     canRoll: state.phase === 'rollDice' && isActing && !state.hasRolled,
     mustDiscard: state.pendingDiscards[playerId] ?? 0,
+    mustChooseGold: state.pendingGold[playerId] ?? 0,
     mustMoveRobber: state.phase === 'moveRobber' && isActing,
     canBuyDevCard: false,
     canEndTurn:
@@ -53,9 +60,11 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
     buildSettlement: [],
     buildCity: [],
     buildRoad: [],
+    buildShip: [],
     setupAction: null,
     setupSettlementSpots: [],
     setupRoadSpots: [],
+    setupShipSpots: [],
   };
 
   if (!player) return result;
@@ -64,9 +73,14 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
   if (state.phase === 'setup' && state.setup && state.setup.queue[state.setup.index] === playerId) {
     if (state.setup.awaitingRoad) {
       result.setupAction = 'road';
-      result.setupRoadSpots = getBoardEdges(state).filter(
+      result.setupRoadSpots = getRoadEdges(state).filter(
         (e) => !canPlaceRoad(state, playerId, e, true, state.setup!.lastSettlement),
       );
+      if (seafarers) {
+        result.setupShipSpots = getShipEdges(state).filter(
+          (e) => !canPlaceShip(state, playerId, e, true, state.setup!.lastSettlement),
+        );
+      }
     } else {
       result.setupAction = 'settlement';
       result.setupSettlementSpots = getBoardVertices(state).filter(
@@ -92,8 +106,13 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
         .filter((v) => !canBuildCity(state, playerId, v));
     }
     if (hasResources(player, BUILD_COSTS.road) && player.piecesLeft.road > 0) {
-      result.buildRoad = getBoardEdges(state).filter(
+      result.buildRoad = getRoadEdges(state).filter(
         (e) => !canPlaceRoad(state, playerId, e, false, null),
+      );
+    }
+    if (seafarers && hasResources(player, SHIP_COST) && player.piecesLeft.ship > 0) {
+      result.buildShip = getShipEdges(state).filter(
+        (e) => !canPlaceShip(state, playerId, e, false, null),
       );
     }
     result.canBuyDevCard =

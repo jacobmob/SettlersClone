@@ -26,7 +26,7 @@ export interface PublicPlayer {
   /** Total unplayed development cards (hidden identities). */
   devCardCount: number;
   playedKnights: number;
-  piecesLeft: { settlement: number; city: number; road: number };
+  piecesLeft: { settlement: number; city: number; road: number; ship: number };
   victoryPoints: number; // public VP only
   // Present only for the viewing player:
   resources?: ResourceCounts;
@@ -65,10 +65,12 @@ export interface GameView {
   log: LogEntry[];
   winner: string | null;
   turnNumber: number;
+  pendingGold: Record<string, number>;
   // viewer-specific
   you: string;
   yourVictoryPoints: number; // includes hidden VP cards
   yourPendingDiscard: number;
+  yourPendingGold: number;
 }
 
 /**
@@ -131,8 +133,10 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
     log: state.log,
     winner: state.winner,
     turnNumber: state.turnNumber,
+    pendingGold: state.pendingGold,
     you: viewerId,
     yourVictoryPoints: getVictoryPoints(state, viewerId, true),
     yourPendingDiscard: state.pendingDiscards[viewerId] ?? 0,
+    yourPendingGold: state.pendingGold[viewerId] ?? 0,
   };
 }

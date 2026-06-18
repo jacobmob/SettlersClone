@@ -1,10 +1,11 @@
-import type { EdgeId, VertexId } from '@catan/shared';
+import { type EdgeId, SHIP_COST, type VertexId } from '@catan/shared';
 import { useMemo, useState } from 'react';
 import { Board, type BoardMode } from '../components/Board.js';
 import {
   BankTradeModal,
   DiscardModal,
   GameOverModal,
+  GoldChoiceModal,
   MonopolyModal,
   ProposeTradeModal,
   StealModal,
@@ -20,6 +21,7 @@ import {
   legalCities,
   legalRoads,
   legalSettlements,
+  legalShips,
   me as getMe,
   robberTargets,
 } from '../clientActions.js';
@@ -60,10 +62,13 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
     return new Set<VertexId>();
   }, [view, boardMode, isSetup]);
 
-  const legalEdges = useMemo(
-    () => (boardMode === 'road' ? new Set(legalRoads(view, isSetup)) : new Set<EdgeId>()),
-    [view, boardMode, isSetup],
-  );
+  const legalEdges = useMemo(() => {
+    if (boardMode === 'road') return new Set(legalRoads(view, isSetup));
+    if (boardMode === 'ship') return new Set(legalShips(view, isSetup));
+    return new Set<EdgeId>();
+  }, [view, boardMode, isSetup]);
+
+  const seafarers = view.settings.expansions.includes('seafarers');
 
   const legalTilesSet = useMemo(
     () => (boardMode === 'robber' ? new Set(landTiles(view)) : new Set<string>()),
@@ -92,7 +97,11 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       }
       return;
     }
-    emitAction(isSetup ? { type: 'placeRoad', edge: e } : { type: 'buildRoad', edge: e });
+    if (boardMode === 'ship') {
+      emitAction(isSetup ? { type: 'placeShip', edge: e } : { type: 'buildShip', edge: e });
+    } else {
+      emitAction(isSetup ? { type: 'placeRoad', edge: e } : { type: 'buildRoad', edge: e });
+    }
     reset();
   };
 
@@ -179,6 +188,14 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
               <button disabled={!canAfford(view, COSTS.road)} onClick={() => setUiMode('road')}>
                 Road
               </button>
+              {seafarers && (
+                <button
+                  disabled={!canAfford(view, SHIP_COST) || me.piecesLeft.ship <= 0}
+                  onClick={() => setUiMode('ship')}
+                >
+                  Ship
+                </button>
+              )}
               <button
                 disabled={!canAfford(view, COSTS.settlement)}
                 onClick={() => setUiMode('settlement')}
@@ -271,6 +288,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
 
       {/* modals */}
       {view.yourPendingDiscard > 0 && <DiscardModal view={view} />}
+      {view.yourPendingGold > 0 && <GoldChoiceModal view={view} />}
       {steal && (
         <StealModal
           targets={steal.targets}

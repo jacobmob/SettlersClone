@@ -81,6 +81,25 @@ export function DiscardModal({ view }: { view: GameView }) {
   );
 }
 
+export function GoldChoiceModal({ view }: { view: GameView }) {
+  const need = view.yourPendingGold;
+  const [picks, setPicks] = useState<Partial<ResourceCounts>>({});
+  const cap = (r: Resource) => (view.bank ? view.bank[r] : need);
+  return (
+    <Modal title={`Gold field — choose ${need} resource${need === 1 ? '' : 's'}`}>
+      <p className="muted">Your gold field produced — take any resources from the bank.</p>
+      <Counter value={picks} onChange={setPicks} max={cap} />
+      <button
+        className="accent"
+        disabled={total(picks) !== need}
+        onClick={() => emitAction({ type: 'chooseGold', resources: picks })}
+      >
+        Collect ({total(picks)}/{need})
+      </button>
+    </Modal>
+  );
+}
+
 export function StealModal({
   targets,
   onPick,

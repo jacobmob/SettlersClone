@@ -87,9 +87,41 @@ export const BASE_5_6: MapDef = {
   portBag: EXT_PORTS,
 };
 
+// Seafarers starter map: a 19-tile home island (incl. gold fields) ringed by
+// sea, so ships and coastal expansion come into play. Land resources/numbers
+// are still randomized at game start; the water frame is fixed.
+const SEAFARERS_RESOURCES: TileType[] = [
+  ...Array<TileType>(4).fill('wood'),
+  ...Array<TileType>(4).fill('sheep'),
+  ...Array<TileType>(3).fill('wheat'),
+  ...Array<TileType>(3).fill('brick'),
+  ...Array<TileType>(2).fill('ore'),
+  'gold',
+  'gold',
+  'desert',
+];
+
+function cubeRadius(c: Cube): number {
+  return Math.max(Math.abs(c.x), Math.abs(c.y), Math.abs(c.z));
+}
+
+export const SEAFARERS_1: MapDef = {
+  id: 'seafarers-1',
+  name: 'Seafarers — Home Island',
+  playerRange: [3, 4],
+  hexes: hexagon(3).map((coord) =>
+    cubeRadius(coord) <= 2 ? { coord } : { coord, fixedType: 'water' as const },
+  ),
+  ports: [],
+  resourceBag: SEAFARERS_RESOURCES,
+  numberBag: BASE_NUMBERS,
+  portBag: BASE_PORTS,
+};
+
 export const BUILT_IN_MAPS: Record<string, MapDef> = {
   [BASE_3_4.id]: BASE_3_4,
   [BASE_5_6.id]: BASE_5_6,
+  [SEAFARERS_1.id]: SEAFARERS_1,
 };
 
 export function getMap(id: string): MapDef {

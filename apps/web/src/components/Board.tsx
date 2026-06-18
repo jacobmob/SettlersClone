@@ -10,7 +10,7 @@ import { PIECE_COLORS, RESOURCE_COLORS, RESOURCE_ICON } from '../config.js';
 
 const SIZE = 46;
 
-export type BoardMode = 'none' | 'settlement' | 'city' | 'road' | 'robber';
+export type BoardMode = 'none' | 'settlement' | 'city' | 'road' | 'ship' | 'robber';
 
 interface Props {
   view: GameView;
@@ -108,9 +108,10 @@ export function Board({
         );
       })}
 
-      {/* existing roads */}
+      {/* existing roads & ships */}
       {Object.entries(view.roads).map(([edge, road]) => {
         const [a, b] = verticesOfEdge(edge).map((v) => vertexToPixel(v, SIZE));
+        const isShip = road.kind === 'ship';
         return (
           <line
             key={edge}
@@ -119,14 +120,15 @@ export function Board({
             x2={b!.x}
             y2={b!.y}
             stroke={ownerColor(road.owner)}
-            strokeWidth={8}
+            strokeWidth={isShip ? 6 : 8}
             strokeLinecap="round"
+            strokeDasharray={isShip ? '7 5' : undefined}
           />
         );
       })}
 
-      {/* legal road highlights */}
-      {mode === 'road' &&
+      {/* legal road / ship highlights */}
+      {(mode === 'road' || mode === 'ship') &&
         [...legalEdges].map((edge) => {
           const [a, b] = verticesOfEdge(edge).map((v) => vertexToPixel(v, SIZE));
           return (
@@ -136,10 +138,11 @@ export function Board({
               y1={a!.y}
               x2={b!.x}
               y2={b!.y}
-              stroke="var(--accent)"
+              stroke={mode === 'ship' ? '#7fd3ff' : 'var(--accent)'}
               strokeWidth={9}
               strokeLinecap="round"
-              opacity={0.45}
+              strokeDasharray={mode === 'ship' ? '7 5' : undefined}
+              opacity={0.5}
               style={{ cursor: 'pointer' }}
               onClick={() => onEdge(edge)}
             />

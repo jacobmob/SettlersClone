@@ -3,7 +3,7 @@ import type { Cube, EdgeId, VertexId } from './coords.js';
 export type Resource = 'brick' | 'wood' | 'sheep' | 'wheat' | 'ore';
 export const RESOURCES: readonly Resource[] = ['brick', 'wood', 'sheep', 'wheat', 'ore'];
 
-export type TileType = Resource | 'desert' | 'water';
+export type TileType = Resource | 'desert' | 'water' | 'gold';
 
 export type DevCardType =
   | 'knight'
@@ -49,6 +49,8 @@ export interface Building {
 
 export interface Road {
   owner: string; // player id
+  /** 'road' on land edges, 'ship' on sea edges (Seafarers). Defaults to 'road'. */
+  kind: 'road' | 'ship';
 }
 
 export interface Player {
@@ -65,7 +67,7 @@ export interface Player {
   newDevCards: DevCardType[];
   playedKnights: number;
   hasPlayedDevCardThisTurn: boolean;
-  piecesLeft: { settlement: number; city: number; road: number };
+  piecesLeft: { settlement: number; city: number; road: number; ship: number };
   connected: boolean;
 }
 
@@ -75,6 +77,7 @@ export type GamePhase =
   | 'rollDice'
   | 'discard' // players over the limit must discard after a 7
   | 'moveRobber'
+  | 'goldChoice' // Seafarers: players pick resources for gold-field production
   | 'main' // build / trade / play dev cards
   | 'specialBuild' // 5-6 player special build phase
   | 'gameOver';
@@ -165,6 +168,8 @@ export interface GameState {
 
   /** player id -> number of cards they still must discard after a 7. */
   pendingDiscards: Record<string, number>;
+  /** Seafarers: player id -> resources still owed from gold-field production. */
+  pendingGold: Record<string, number>;
   /** Free roads still owed from a Road Building card / setup. */
   freeRoadsRemaining: number;
   /** True once the current player has rolled this turn. */
@@ -201,6 +206,9 @@ export type Action =
   | { type: 'buildSettlement'; vertex: VertexId }
   | { type: 'buildCity'; vertex: VertexId }
   | { type: 'buildRoad'; edge: EdgeId }
+  | { type: 'buildShip'; edge: EdgeId }
+  | { type: 'placeShip'; edge: EdgeId }
+  | { type: 'chooseGold'; resources: Partial<ResourceCounts> }
   | { type: 'buyDevCard' }
   | { type: 'playKnight'; hex: string; stealFrom: string | null }
   | { type: 'playRoadBuilding'; edges: EdgeId[] }

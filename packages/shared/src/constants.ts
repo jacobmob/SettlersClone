@@ -8,7 +8,9 @@ export const BUILD_COSTS: Record<'road' | 'settlement' | 'city' | 'devCard', Par
     devCard: { sheep: 1, wheat: 1, ore: 1 },
   };
 
-export const STARTING_PIECES = { settlement: 5, city: 4, road: 15 };
+export const STARTING_PIECES = { settlement: 5, city: 4, road: 15, ship: 15 };
+
+export const SHIP_COST: Partial<ResourceCounts> = { wood: 1, sheep: 1 };
 
 export const BANK_PER_RESOURCE = 19;
 

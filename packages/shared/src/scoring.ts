@@ -12,49 +12,53 @@ import type { GameState } from './types.js';
 /**
  * Longest continuous road for a player: the longest trail through their road
  * network that never reuses a segment and is broken wherever an *opponent's*
- * settlement or city sits on an intervening vertex.
+ * settlement or city sits on an intervening vertex. Roads and ships (Seafarers)
+ * only join into one continuous route at a vertex where you have a building.
  */
 export function computeLongestRoad(state: GameState, playerId: string): number {
-  const myRoads = Object.entries(state.roads)
-    .filter(([, r]) => r.owner === playerId)
-    .map(([e]) => e);
+  const myRoads = Object.entries(state.roads).filter(([, r]) => r.owner === playerId);
   if (myRoads.length === 0) return 0;
 
   const incident = new Map<VertexId, EdgeId[]>();
-  for (const e of myRoads) {
+  for (const [e] of myRoads) {
     for (const v of verticesOfEdge(e)) {
       const list = incident.get(v);
       if (list) list.push(e);
       else incident.set(v, [e]);
     }
   }
+  const kindOf = (e: EdgeId): 'road' | 'ship' => state.roads[e]!.kind ?? 'road';
 
   const blocked = (v: VertexId): boolean => {
     const b = state.buildings[v];
     return !!b && b.owner !== playerId;
   };
+  const mine = (v: VertexId): boolean => state.buildings[v]?.owner === playerId;
 
   const used = new Set<EdgeId>();
   let best = 0;
 
-  const dfs = (at: VertexId, length: number): void => {
+  // `arrivedKind` is the kind of the edge we travelled to reach `at`.
+  const dfs = (at: VertexId, length: number, arrivedKind: 'road' | 'ship'): void => {
     if (length > best) best = length;
-    if (blocked(at)) return; // road is severed by an opponent building
+    if (blocked(at)) return; // route severed by an opponent building
     for (const e of incident.get(at) ?? []) {
       if (used.has(e)) continue;
+      // Road<->ship transitions are only allowed through your own building.
+      if (kindOf(e) !== arrivedKind && !mine(at)) continue;
       const [a, b] = verticesOfEdge(e);
       const next = a === at ? b! : a!;
       used.add(e);
-      dfs(next, length + 1);
+      dfs(next, length + 1, kindOf(e));
       used.delete(e);
     }
   };
 
-  for (const e of myRoads) {
+  for (const [e] of myRoads) {
     const [a, b] = verticesOfEdge(e);
     used.add(e);
-    dfs(b!, 1);
-    dfs(a!, 1);
+    dfs(b!, 1, kindOf(e));
+    dfs(a!, 1, kindOf(e));
     used.delete(e);
   }
   return best;
