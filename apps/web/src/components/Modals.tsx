@@ -268,11 +268,13 @@ export function GameOverModal({ view, onLeave }: { view: GameView; onLeave: () =
           <tr>
             <th>Player</th>
             <th>VP</th>
-            <th>⚔️</th>
+            <th title="knights">⚔️</th>
             <th>Roads</th>
             <th>Settle</th>
             <th>Cities</th>
             <th>Dev</th>
+            <th title="resources gained">Res</th>
+            <th title="robber moves">🦹</th>
           </tr>
         </thead>
         <tbody>
@@ -285,11 +287,32 @@ export function GameOverModal({ view, onLeave }: { view: GameView; onLeave: () =
               <td>{stats.settlementsBuilt}</td>
               <td>{stats.citiesBuilt}</td>
               <td>{stats.devCardsBought}</td>
+              <td>{stats.resourcesGained}</td>
+              <td>{stats.robberMoves}</td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="muted">Awards: Longest Road & Largest Army count toward VP above.</p>
+      <p className="muted">Awards: Longest Road &amp; Largest Army count toward VP above.</p>
+
+      <strong>Dice rolls this game</strong>
+      {rows.map(({ p, stats }) => {
+        const max = Math.max(1, ...Object.values(stats.rollHistogram));
+        return (
+          <div key={p.id} className="row" style={{ alignItems: 'flex-end', gap: 3, height: 60 }}>
+            <span style={{ width: 70, fontSize: 12 }}>{p.name}</span>
+            {Array.from({ length: 11 }, (_, i) => i + 2).map((n) => {
+              const c = stats.rollHistogram[n] ?? 0;
+              return (
+                <div key={n} className="col" style={{ alignItems: 'center', flex: 1, gap: 1 }}>
+                  <div className="bar" style={{ width: '70%', height: `${(c / max) * 40}px` }} title={`${c}× ${n}`} />
+                  <span style={{ fontSize: 9 }}>{n}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
       <button className="accent" onClick={onLeave}>
         Back to lobby browser
       </button>
