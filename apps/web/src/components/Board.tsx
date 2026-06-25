@@ -10,7 +10,15 @@ import { PIECE_COLORS, RESOURCE_COLORS, RESOURCE_ICON } from '../config.js';
 
 const SIZE = 46;
 
-export type BoardMode = 'none' | 'settlement' | 'city' | 'road' | 'ship' | 'robber' | 'knight';
+export type BoardMode =
+  | 'none'
+  | 'settlement'
+  | 'city'
+  | 'road'
+  | 'ship'
+  | 'robber'
+  | 'knight'
+  | 'knightMove';
 
 interface Props {
   view: GameView;
@@ -195,8 +203,11 @@ export function Board({
         );
       })}
 
-      {/* legal vertex highlights (settlement / city / knight) */}
-      {(mode === 'settlement' || mode === 'city' || mode === 'knight') &&
+      {/* legal vertex highlights (settlement / city / knight / knight move) */}
+      {(mode === 'settlement' ||
+        mode === 'city' ||
+        mode === 'knight' ||
+        mode === 'knightMove') &&
         [...legalVertices].map((vertex) => {
           const p = vertexToPixel(vertex, SIZE);
           return (
@@ -205,7 +216,7 @@ export function Board({
               cx={p.x}
               cy={p.y}
               r={9}
-              fill={mode === 'knight' ? '#b06bd6' : 'var(--accent)'}
+              fill={mode === 'knight' || mode === 'knightMove' ? '#b06bd6' : 'var(--accent)'}
               opacity={0.5}
               stroke="#fff"
               className="vertex-spot"

@@ -141,7 +141,7 @@ export function getVictoryPoints(
     if (state.metropolis[track] === playerId) vp += VP_METROPOLIS;
   }
   const ckPlayer = state.players.find((p) => p.id === playerId);
-  if (ckPlayer) vp += ckPlayer.defenderPoints;
+  if (ckPlayer) vp += ckPlayer.defenderPoints + ckPlayer.progressVP;
   if (includeHidden) {
     const player = state.players.find((p) => p.id === playerId);
     if (player) {

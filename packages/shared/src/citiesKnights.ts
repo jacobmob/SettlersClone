@@ -1,4 +1,10 @@
-import type { VertexId } from './coords.js';
+import {
+  type VertexId,
+  cornersOfHex,
+  edgesOfVertex,
+  parseHexKey,
+  verticesOfEdge,
+} from './coords.js';
 import { METROPOLIS_LEVEL } from './constants.js';
 import { getPlayer, isConnectedToPlayer, isVertexOnBoard } from './rules.js';
 import type { GameState, ImprovementTrack } from './types.js';
@@ -18,6 +24,79 @@ export function canBuildKnight(
   if (state.knights[vertex]) return 'A knight is already there.';
   if (!isConnectedToPlayer(state, playerId, vertex))
     return 'A knight must connect to your roads.';
+  return null;
+}
+
+/** Vertices one road/ship segment away from `from` along the player's own network. */
+export function knightStepTargets(
+  state: GameState,
+  playerId: string,
+  from: VertexId,
+): VertexId[] {
+  const out: VertexId[] = [];
+  for (const e of edgesOfVertex(from)) {
+    if (state.roads[e]?.owner !== playerId) continue; // walk only your own roads/ships
+    for (const v of verticesOfEdge(e)) {
+      if (v !== from) out.push(v);
+    }
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * Whether the player's active knight at `from` may move to `to`. A move walks
+ * one segment along the player's network onto an empty intersection, or onto a
+ * strictly weaker opponent knight (displacement). Settlements/cities block.
+ */
+export function canMoveKnight(
+  state: GameState,
+  playerId: string,
+  from: VertexId,
+  to: VertexId,
+): string | null {
+  const knight = state.knights[from];
+  if (!knight || knight.owner !== playerId) return 'That is not your knight.';
+  if (!knight.active) return 'Activate the knight before moving it.';
+  if (knight.moved) return 'That knight has already acted this turn.';
+  if (!isVertexOnBoard(state, to)) return 'That spot is not on the board.';
+  if (from === to) return 'Choose a different intersection.';
+  if (!knightStepTargets(state, playerId, from).includes(to))
+    return 'A knight moves one step along your roads.';
+  if (state.buildings[to]) return 'A building occupies that spot.';
+  const occupant = state.knights[to];
+  if (occupant) {
+    if (occupant.owner === playerId) return 'One of your knights is already there.';
+    if (occupant.level >= knight.level) return 'That knight is too strong to displace.';
+  }
+  return null;
+}
+
+/** A vacant intersection a displaced knight can retreat to (connected to its owner). */
+export function displaceRetreat(
+  state: GameState,
+  owner: string,
+  at: VertexId,
+  excluding: VertexId,
+): VertexId | null {
+  for (const e of edgesOfVertex(at)) {
+    if (state.roads[e]?.owner !== owner) continue;
+    for (const v of verticesOfEdge(e)) {
+      if (v === at || v === excluding) continue;
+      if (state.buildings[v] || state.knights[v]) continue;
+      return v;
+    }
+  }
+  return null;
+}
+
+/** Whether the player's active knight at `from` is adjacent to the robber. */
+export function knightCanChase(state: GameState, playerId: string, from: VertexId): string | null {
+  const knight = state.knights[from];
+  if (!knight || knight.owner !== playerId) return 'That is not your knight.';
+  if (!knight.active) return 'Activate the knight before chasing the robber.';
+  if (knight.moved) return 'That knight has already acted this turn.';
+  if (!cornersOfHex(parseHexKey(state.robberHex)).includes(from))
+    return 'That knight is not next to the robber.';
   return null;
 }
 

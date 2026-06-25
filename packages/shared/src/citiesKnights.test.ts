@@ -70,7 +70,7 @@ describe('knights', () => {
   it('measures active strength and resolves barbarian attacks', () => {
     const s = ckGame(2);
     s.buildings['cityB'] = { type: 'city', owner: 'b' };
-    s.knights['k1'] = { owner: 'a', level: 2, active: true };
+    s.knights['k1'] = { owner: 'a', level: 2, active: true, moved: false };
     expect(knightStrength(s, 'a')).toBe(2);
 
     // 2 strength vs 1 city -> defended, 'a' is the defender, knights deactivate

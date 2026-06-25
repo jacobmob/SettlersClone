@@ -2,15 +2,19 @@ import { createBoard } from './board.js';
 import {
   BARBARIAN_MAX,
   BUILD_COSTS,
+  COMMODITY_LIST,
   KNIGHT_ACTIVATE_COST,
   KNIGHT_COST,
   MAX_IMPROVEMENT,
   MAX_KNIGHT_LEVEL,
+  PROGRESS_HAND_LIMIT,
+  PROGRESS_INFO,
   RESOURCE_LIST,
   SHIP_COST,
   STARTING_PIECES,
   TRACK_COMMODITY,
   buildDevDeck,
+  buildProgressDecks,
   emptyCommodityCounts,
   emptyResourceCounts,
   fullBank,
@@ -19,10 +23,14 @@ import {
 } from './constants.js';
 import {
   canBuildKnight,
+  canMoveKnight,
+  displaceRetreat,
   isCitiesKnights,
+  knightCanChase,
   resolveBarbarianAttack,
   updateMetropolis,
 } from './citiesKnights.js';
+import { cornersOfHex, parseHexKey } from './coords.js';
 import { drawBalanced, rollEventDie, rollRandom, shuffledDiceDeck } from './dice.js';
 import { getMap } from './maps.js';
 import { Rng, makeSeed, randInt } from './rng.js';
@@ -38,11 +46,17 @@ import {
   portRatios,
   robberStealTargets,
 } from './rules.js';
-import { getVictoryPoints, updateLargestArmy, updateLongestRoad } from './scoring.js';
+import {
+  getVictoryPoints,
+  publicVictoryPoints,
+  updateLargestArmy,
+  updateLongestRoad,
+} from './scoring.js';
 import { normalizeSettings } from './settings.js';
 import type {
   Action,
   ActionResult,
+  Commodity,
   DevCardType,
   GameSettings,
   GameState,
@@ -51,6 +65,8 @@ import type {
   PlayerColor,
   PlayerStats,
   MapDef,
+  ProgressCard,
+  ProgressParams,
   Resource,
   ResourceCounts,
 } from './types.js';
@@ -110,6 +126,9 @@ export function createGame(opts: CreateGameOptions): GameState {
     commodities: emptyCommodityCounts(),
     improvements: { trade: 0, politics: 0, science: 0 },
     defenderPoints: 0,
+    progressCards: [],
+    progressVP: 0,
+    progressFlags: { crane: false, medicine: false, fleetResource: null },
   }));
 
   const order = players.map((p) => p.id);
@@ -117,6 +136,12 @@ export function createGame(opts: CreateGameOptions): GameState {
   const queue = [...order, ...[...order].reverse()];
 
   const devDeck = rng.shuffle(buildDevDeck());
+  const decks = buildProgressDecks();
+  const progressDecks = {
+    science: rng.shuffle(decks.science),
+    politics: rng.shuffle(decks.politics),
+    trade: rng.shuffle(decks.trade),
+  };
   const balanced = settings.diceMode === 'balanced';
   let rngState = rng.state;
   let diceDeck: number[] = [];
@@ -167,6 +192,8 @@ export function createGame(opts: CreateGameOptions): GameState {
     eventDie: null,
     barbarianPosition: 0,
     metropolis: { trade: null, politics: null, science: null },
+    progressDecks,
+    pendingAlchemist: null,
   };
 }
 
@@ -250,6 +277,12 @@ function dispatch(s: GameState, playerId: string, action: Action): string | null
       return handleActivateKnight(s, playerId, action.vertex);
     case 'promoteKnight':
       return handlePromoteKnight(s, playerId, action.vertex);
+    case 'moveKnight':
+      return handleMoveKnight(s, playerId, action.from, action.to);
+    case 'chaseRobber':
+      return handleChaseRobber(s, playerId, action.from, action.hex, action.stealFrom);
+    case 'playProgress':
+      return handlePlayProgress(s, playerId, action.card, action.params ?? {});
     case 'endTurn':
       return handleEndTurn(s, playerId);
     case 'requestSpecialBuild':
@@ -349,7 +382,12 @@ function handleRoll(s: GameState, playerId: string): string | null {
   if (s.hasRolled) return 'You have already rolled.';
 
   let sum: number;
-  if (s.settings.diceMode === 'balanced') {
+  if (s.pendingAlchemist) {
+    // Alchemist: the player locked in both dice before rolling.
+    s.dice = s.pendingAlchemist;
+    s.pendingAlchemist = null;
+    sum = s.dice[0] + s.dice[1];
+  } else if (s.settings.diceMode === 'balanced') {
     const r = drawBalanced(s.diceDeck, s.rngState);
     s.dice = r.dice;
     s.diceDeck = r.deck;
@@ -369,11 +407,14 @@ function handleRoll(s: GameState, playerId: string): string | null {
   log(s, 'roll', `${getPlayer(s, playerId)!.name} rolled ${sum}.`, playerId);
 
   // Cities & Knights: roll the event die and advance / unleash the barbarians.
-  // (Coloured faces draw progress cards, which arrive in a later phase.)
+  // Coloured faces award progress cards based on the red die (s.dice[0]).
   if (isCitiesKnights(s)) {
     const ev = rollEventDie(s.rngState);
     s.rngState = ev.rngState;
     s.eventDie = ev.face;
+    if (ev.face !== 'barbarian') {
+      drawProgressCards(s, ev.face, s.dice![0]!);
+    }
     if (ev.face === 'barbarian') {
       s.barbarianPosition += 1;
       if (s.barbarianPosition >= BARBARIAN_MAX) {
@@ -420,6 +461,24 @@ function handleRoll(s: GameState, playerId: string): string | null {
     s.phase = Object.keys(s.pendingGold).length > 0 ? 'goldChoice' : 'main';
   }
   return null;
+}
+
+/**
+ * Award progress cards after a coloured event-die face: every player whose
+ * improvement level in that discipline is at least the red die draws the top
+ * card of the matching deck (discarded if their hand is already full).
+ */
+function drawProgressCards(s: GameState, track: ImprovementTrack, redDie: number): void {
+  for (const p of s.players) {
+    if (p.improvements[track] < redDie) continue;
+    const deck = s.progressDecks[track];
+    if (deck.length === 0) break;
+    const card = deck.pop()!;
+    if (p.progressCards.length < PROGRESS_HAND_LIMIT) {
+      p.progressCards.push(card);
+      log(s, 'progress', `${p.name} drew a ${track} progress card.`, p.id);
+    }
+  }
 }
 
 function handleChooseGold(
@@ -554,9 +613,13 @@ function handleBuildCity(s: GameState, playerId: string, vertex: string): string
   if (player.piecesLeft.city <= 0) return 'No cities left to build.';
   const err = canBuildCity(s, playerId, vertex);
   if (err) return err;
-  if (!hasResources(player, BUILD_COSTS.city)) return 'Not enough resources.';
+  // Medicine (science progress card): one city this turn costs 2 ore + 1 wheat.
+  const useMedicine = player.progressFlags.medicine;
+  const cityCost = useMedicine ? { ore: 2, wheat: 1 } : BUILD_COSTS.city;
+  if (!hasResources(player, cityCost)) return 'Not enough resources.';
 
-  payCost(s, player, BUILD_COSTS.city);
+  payCost(s, player, cityCost);
+  if (useMedicine) player.progressFlags.medicine = false;
   s.buildings[vertex] = { type: 'city', owner: playerId };
   player.piecesLeft.city--;
   player.piecesLeft.settlement++; // settlement returns to supply
@@ -612,9 +675,11 @@ function handleImproveCity(
   const level = player.improvements[track];
   if (level >= MAX_IMPROVEMENT) return 'That track is already at the maximum level.';
   const commodity = TRACK_COMMODITY[track];
-  const cost = improvementCost(level);
+  // Crane (science progress card): the next improvement costs 1 fewer commodity.
+  const cost = Math.max(0, improvementCost(level) - (player.progressFlags.crane ? 1 : 0));
   if (player.commodities[commodity] < cost) return `You need ${cost} ${commodity}.`;
   player.commodities[commodity] -= cost;
+  player.progressFlags.crane = false;
   player.improvements[track] = level + 1;
   updateMetropolis(s);
   log(s, 'improve', `${player.name} advanced ${track} to level ${level + 1}.`, playerId);
@@ -631,7 +696,7 @@ function handleBuildKnight(s: GameState, playerId: string, vertex: string): stri
   if (err) return err;
   if (!hasResources(player, KNIGHT_COST)) return 'A knight costs 1 ore and 1 sheep.';
   payCost(s, player, KNIGHT_COST);
-  s.knights[vertex] = { owner: playerId, level: 1, active: false };
+  s.knights[vertex] = { owner: playerId, level: 1, active: false, moved: false };
   player.piecesLeft.knight--;
   log(s, 'knight', `${player.name} recruited a knight.`, playerId);
   return null;
@@ -647,7 +712,62 @@ function handleActivateKnight(s: GameState, playerId: string, vertex: string): s
   if (!hasResources(player, KNIGHT_ACTIVATE_COST)) return 'Activating a knight costs 1 wheat.';
   payCost(s, player, KNIGHT_ACTIVATE_COST);
   knight.active = true;
+  knight.moved = true; // a knight cannot also act the turn it is activated
   log(s, 'knight', `${player.name} activated a knight.`, playerId);
+  return null;
+}
+
+// --- advanced knight actions (Cities & Knights) ---
+
+function handleMoveKnight(
+  s: GameState,
+  playerId: string,
+  from: string,
+  to: string,
+): string | null {
+  if (!isCitiesKnights(s)) return 'Knights need Cities & Knights.';
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const err = canMoveKnight(s, playerId, from, to);
+  if (err) return err;
+  const knight = s.knights[from]!;
+  const displaced = s.knights[to];
+  if (displaced) {
+    // Displacement: the weaker knight retreats, or is removed if it cannot.
+    const retreat = displaceRetreat(s, displaced.owner, to, from);
+    if (retreat) {
+      s.knights[retreat] = { ...displaced, active: false };
+    } else {
+      const owner = getPlayer(s, displaced.owner);
+      if (owner) owner.piecesLeft.knight++;
+      log(s, 'knight', `${getPlayer(s, displaced.owner)!.name} lost a displaced knight.`, displaced.owner);
+    }
+  }
+  delete s.knights[from];
+  s.knights[to] = { ...knight, moved: true };
+  log(s, 'knight', `${getPlayer(s, playerId)!.name} ${displaced ? 'displaced a knight' : 'moved a knight'}.`, playerId);
+  return null;
+}
+
+function handleChaseRobber(
+  s: GameState,
+  playerId: string,
+  from: string,
+  hex: string,
+  stealFrom: string | null,
+): string | null {
+  if (!isCitiesKnights(s)) return 'Knights need Cities & Knights.';
+  const gate = ensureBuildPhase(s, playerId);
+  if (gate) return gate;
+  const err = knightCanChase(s, playerId, from);
+  if (err) return err;
+  // resolveRobber re-derives the phase from hasRolled; preserve our build phase.
+  const phase = s.phase;
+  const robberErr = resolveRobber(s, playerId, hex, stealFrom);
+  if (robberErr) return robberErr;
+  s.phase = phase;
+  s.knights[from]!.moved = true;
+  log(s, 'knight', `${getPlayer(s, playerId)!.name} chased the robber with a knight.`, playerId);
   return null;
 }
 
@@ -666,6 +786,218 @@ function handlePromoteKnight(s: GameState, playerId: string, vertex: string): st
   knight.level += 1;
   log(s, 'knight', `${player.name} promoted a knight.`, playerId);
   return null;
+}
+
+// --- progress cards (Cities & Knights) ---
+
+function removeProgress(player: Player, card: ProgressCard): void {
+  const i = player.progressCards.indexOf(card);
+  if (i >= 0) player.progressCards.splice(i, 1);
+}
+
+function handlePlayProgress(
+  s: GameState,
+  playerId: string,
+  card: ProgressCard,
+  params: ProgressParams,
+): string | null {
+  if (!isCitiesKnights(s)) return 'Progress cards need Cities & Knights.';
+  const player = getPlayer(s, playerId)!;
+  if (!player.progressCards.includes(card)) return 'You do not hold that card.';
+
+  // Alchemist is played before rolling; every other card during your main phase.
+  if (card === 'alchemist') {
+    if (s.phase !== 'rollDice' || s.order[s.currentPlayerIndex] !== playerId)
+      return 'Play Alchemist on your turn, before rolling.';
+    if (s.hasRolled) return 'You have already rolled this turn.';
+  } else if (s.phase !== 'main' || s.order[s.currentPlayerIndex] !== playerId) {
+    return 'You can only play that during your main phase.';
+  }
+
+  const err = applyProgressEffect(s, player, card, params);
+  if (err) return err;
+  removeProgress(player, card);
+  log(s, 'progress', `${player.name} played ${PROGRESS_INFO[card].label}.`, playerId);
+  return checkWin(s, playerId);
+}
+
+/** Apply a single progress card's effect; returns an error string or null. */
+function applyProgressEffect(
+  s: GameState,
+  player: Player,
+  card: ProgressCard,
+  params: ProgressParams,
+): string | null {
+  const opponents = s.players.filter((p) => p.id !== player.id);
+  switch (card) {
+    case 'printer':
+    case 'constitution':
+      player.progressVP += 1;
+      return null;
+
+    case 'warlord':
+      for (const k of Object.values(s.knights)) if (k.owner === player.id) k.active = true;
+      return null;
+
+    case 'crane':
+      player.progressFlags.crane = true;
+      return null;
+
+    case 'medicine':
+      player.progressFlags.medicine = true;
+      return null;
+
+    case 'merchantFleet': {
+      const res = params.tradeResource;
+      if (!res || !RESOURCE_LIST.includes(res)) return 'Choose a resource for 2:1 trading.';
+      player.progressFlags.fleetResource = res;
+      return null;
+    }
+
+    case 'alchemist': {
+      const d = params.dice;
+      if (!d || d.length !== 2 || d.some((n) => !Number.isInteger(n) || n < 1 || n > 6))
+        return 'Choose two die values from 1 to 6.';
+      s.pendingAlchemist = [d[0]!, d[1]!];
+      return null;
+    }
+
+    case 'smith': {
+      const verts = (params.vertices ?? []).slice(0, 2);
+      if (verts.length === 0) return 'Choose a knight to promote.';
+      for (const v of verts) {
+        const k = s.knights[v];
+        if (!k || k.owner !== player.id) return 'That is not your knight.';
+        if (k.level >= MAX_KNIGHT_LEVEL) return 'That knight is already mighty.';
+      }
+      for (const v of verts) s.knights[v]!.level += 1;
+      return null;
+    }
+
+    case 'roadBuilding': {
+      const edges = (params.edges ?? []).slice(0, 2);
+      if (edges.length === 0) return 'Choose at least one road to build.';
+      for (const edge of edges) {
+        if (player.piecesLeft.road <= 0) break;
+        const e = canPlaceRoad(s, player.id, edge, false, null);
+        if (e) return e;
+        placeRoad(s, player.id, edge, 'road');
+      }
+      return null;
+    }
+
+    case 'irrigation':
+      grantTerrainBonus(s, player, 'wheat');
+      return null;
+
+    case 'mining':
+      grantTerrainBonus(s, player, 'ore');
+      return null;
+
+    case 'bishop': {
+      const hex = params.hex;
+      if (!hex) return 'Choose where to move the robber.';
+      const tile = s.tiles[hex];
+      if (!tile || tile.type === 'water') return 'The robber must go on a land tile.';
+      if (hex === s.robberHex) return 'Move the robber to a different tile.';
+      s.robberHex = hex;
+      s.stats.perPlayer[player.id]!.robberMoves++;
+      const owners = new Set<string>();
+      for (const v of cornersOfHex(parseHexKey(hex))) {
+        const b = s.buildings[v];
+        if (b && b.owner !== player.id) owners.add(b.owner);
+      }
+      for (const id of owners) stealRandom(s, id, player.id);
+      return null;
+    }
+
+    case 'deserter': {
+      const target = params.targetPlayer;
+      if (!target || target === player.id) return 'Choose an opponent.';
+      const victim = getPlayer(s, target);
+      if (!victim) return 'Unknown player.';
+      const entries = Object.entries(s.knights).filter(([, k]) => k.owner === target);
+      if (entries.length === 0) return 'That player has no knights.';
+      entries.sort((a, b) => a[1].level - b[1].level);
+      delete s.knights[entries[0]![0]];
+      victim.piecesLeft.knight++;
+      // The deserter gains a knight to deploy later (within the supply cap).
+      if (player.piecesLeft.knight < STARTING_PIECES.knight) player.piecesLeft.knight++;
+      return null;
+    }
+
+    case 'resourceMonopoly': {
+      const res = params.resource;
+      if (!res || !RESOURCE_LIST.includes(res)) return 'Choose a resource.';
+      let taken = 0;
+      for (const opp of opponents) {
+        const n = Math.min(2, opp.resources[res]);
+        opp.resources[res] -= n;
+        taken += n;
+      }
+      player.resources[res] += taken;
+      return null;
+    }
+
+    case 'tradeMonopoly': {
+      const com = params.commodity;
+      if (!com || !COMMODITY_LIST.includes(com)) return 'Choose a commodity.';
+      let taken = 0;
+      for (const opp of opponents) {
+        const n = Math.min(1, opp.commodities[com]);
+        opp.commodities[com] -= n;
+        taken += n;
+      }
+      player.commodities[com] += taken;
+      return null;
+    }
+
+    case 'masterMerchant': {
+      const target = params.targetPlayer;
+      if (!target || target === player.id) return 'Choose an opponent.';
+      const victim = getPlayer(s, target);
+      if (!victim) return 'Unknown player.';
+      if (publicVictoryPoints(s, target) <= publicVictoryPoints(s, player.id))
+        return 'Master Merchant targets a player with more points than you.';
+      stealRandomGoods(s, victim, player, 2);
+      return null;
+    }
+  }
+}
+
+/** +2 of `resource` for each tile of that terrain a player's building borders. */
+function grantTerrainBonus(s: GameState, player: Player, resource: Resource): void {
+  for (const tile of Object.values(s.tiles)) {
+    if (tile.type !== resource) continue;
+    const borders = cornersOfHex(tile.coord).some((v) => s.buildings[v]?.owner === player.id);
+    if (!borders) continue;
+    const give = Math.min(2, s.bank[resource]);
+    player.resources[resource] += give;
+    s.bank[resource] -= give;
+    s.stats.perPlayer[player.id]!.resourcesGained += give;
+  }
+}
+
+/** Steal up to `count` random resource/commodity cards from `victim`. */
+function stealRandomGoods(s: GameState, victim: Player, thief: Player, count: number): void {
+  for (let i = 0; i < count; i++) {
+    const pool: { commodity: boolean; key: string }[] = [];
+    for (const r of RESOURCE_LIST)
+      for (let j = 0; j < victim.resources[r]; j++) pool.push({ commodity: false, key: r });
+    for (const c of COMMODITY_LIST)
+      for (let j = 0; j < victim.commodities[c]; j++) pool.push({ commodity: true, key: c });
+    if (pool.length === 0) return;
+    const pick = randInt(s.rngState, pool.length);
+    s.rngState = pick.state;
+    const sel = pool[pick.value]!;
+    if (sel.commodity) {
+      victim.commodities[sel.key as Commodity]--;
+      thief.commodities[sel.key as Commodity]++;
+    } else {
+      victim.resources[sel.key as Resource]--;
+      thief.resources[sel.key as Resource]++;
+    }
+  }
 }
 
 // --- dev cards ---
@@ -805,7 +1137,9 @@ function handleBankTrade(
   if (gate) return gate;
   if (give === receive) return 'Choose two different resources.';
   const player = getPlayer(s, playerId)!;
-  const ratio = portRatios(s, playerId)[give];
+  let ratio = portRatios(s, playerId)[give];
+  // Merchant Fleet (trade progress card): 2:1 on the chosen resource this turn.
+  if (player.progressFlags.fleetResource === give) ratio = Math.min(ratio, 2);
   if (player.resources[give] < ratio) return `You need ${ratio} ${give}.`;
   if (s.bank[receive] <= 0) return 'The bank is out of that resource.';
   player.resources[give] -= ratio;
@@ -936,7 +1270,11 @@ function advanceToNextPlayer(s: GameState): void {
   s.hasRolled = false;
   s.dice = null;
   s.freeRoadsRemaining = 0;
+  s.pendingAlchemist = null;
   s.turnNumber++;
+  // Knights may act again, and turn-scoped progress effects expire.
+  for (const k of Object.values(s.knights)) k.moved = false;
+  for (const p of s.players) p.progressFlags = { crane: false, medicine: false, fleetResource: null };
   const next = getPlayer(s, s.order[s.currentPlayerIndex]!)!;
   next.hasPlayedDevCardThisTurn = false;
 }

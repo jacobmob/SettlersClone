@@ -116,15 +116,26 @@ Per-package, e.g. `pnpm --filter @catan/shared test`.
 These are intentionally **not** in this milestone, but the data models and
 game-logic seams are built to absorb them:
 
-- **Cities & Knights — Phase 2:** progress-card decks (the coloured event-die
-  faces are rolled but draw nothing yet) and advanced knight actions
-  (move/displace/chase the robber).
 - **Installable desktop package** (Electron/Tauri wrapping the web client).
 
 Already shipped in follow-up PRs: the **Seafarers** expansion (ships, sea/gold
-tiles), a **synced radio**, **uploaded avatars** + richer stats, a **custom map
-editor with optional fog of war**, and **Cities & Knights — Phase 1**
-(commodities + city production, the three improvement tracks with metropolises,
-the event die + barbarian track, and knights you build/activate/promote to
-defend Catan).
+tiles), a **synced radio**, **uploaded avatars** + richer stats, **Cities &
+Knights — Phase 1** (commodities + city production, the three improvement tracks
+with metropolises, the event die + barbarian track, and knights you
+build/activate/promote to defend Catan), and **Cities & Knights — Phase 2**:
+
+- **Progress-card decks** for the three coloured event-die faces. A coloured
+  face awards a card to every player whose improvement in that discipline is at
+  least the red die. The implemented set spans all three decks — Alchemist,
+  Crane, Irrigation, Medicine, Mining, Printer, Road Building, Smith (science);
+  Bishop, Constitution, Deserter, Warlord (politics); Master Merchant, Merchant
+  Fleet, Resource Monopoly, Trade Monopoly (trade). Hands cap at 4.
+- **Advanced knight actions:** move a knight along your roads, displace a weaker
+  adjacent enemy knight (it retreats or is removed), and chase the robber with a
+  knight next to it. A knight acts once per turn.
+
+The **custom map editor** now supports arbitrary size/shape boards (adjustable
+canvas, built from a blank slate), painting **specific resource tiles** that
+stay fixed while "land" tiles randomise at game start, and **placing ports** on
+coastline edges.
 ```

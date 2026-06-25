@@ -12,6 +12,7 @@ import {
   type VertexId,
   canBuildCity,
   canBuildKnight,
+  canMoveKnight,
   canPlaceRoad,
   canPlaceShip,
   canPlaceSettlement,
@@ -21,6 +22,7 @@ import {
   getRoadEdges,
   getShipEdges,
   improvementCost,
+  knightStepTargets,
   parseHexKey,
 } from '@catan/shared';
 
@@ -119,6 +121,18 @@ export function legalKnightSpots(view: GameView): VertexId[] {
   return getBoardVertices(asState(view)).filter(
     (v) => canBuildKnight(asState(view), view.you, v) === null,
   );
+}
+
+/** Intersections a knight at `from` may move to (step or displace). */
+export function legalKnightMoves(view: GameView, from: VertexId): VertexId[] {
+  return knightStepTargets(asState(view), view.you, from).filter(
+    (to) => canMoveKnight(asState(view), view.you, from, to) === null,
+  );
+}
+
+/** Is `vertex` one of the corners of the robber's tile? */
+export function knightNextToRobber(view: GameView, vertex: VertexId): boolean {
+  return cornersOfHex(parseHexKey(view.robberHex)).includes(vertex);
 }
 
 /** Commodity cost to advance a track, or null if maxed / unaffordable. */

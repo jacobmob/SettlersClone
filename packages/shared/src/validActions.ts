@@ -11,7 +11,7 @@ import {
   getPlayer,
   hasResources,
 } from './rules.js';
-import type { DevCardType, GameState } from './types.js';
+import type { DevCardType, GameState, ProgressCard } from './types.js';
 
 export interface ValidActions {
   isYourTurn: boolean;
@@ -23,6 +23,7 @@ export interface ValidActions {
   canEndTurn: boolean;
   canEndSpecialBuild: boolean;
   playableDevCards: DevCardType[];
+  playableProgress: ProgressCard[];
   buildSettlement: VertexId[];
   buildCity: VertexId[];
   buildRoad: EdgeId[];
@@ -57,6 +58,7 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
       state.phase === 'main' && state.order[state.currentPlayerIndex] === playerId && state.hasRolled,
     canEndSpecialBuild: state.phase === 'specialBuild' && isActing,
     playableDevCards: [],
+    playableProgress: [],
     buildSettlement: [],
     buildCity: [],
     buildRoad: [],
@@ -122,6 +124,15 @@ export function getValidActions(state: GameState, playerId: string): ValidAction
   // Dev cards can be played on your own turn (main or before rolling).
   if ((state.phase === 'main' || state.phase === 'rollDice') && isActing && !player.hasPlayedDevCardThisTurn) {
     result.playableDevCards = [...new Set(player.devCards)].filter((c) => c !== 'victoryPoint');
+  }
+
+  // Progress cards: most on your main phase; Alchemist only before rolling.
+  if (isActing && player.progressCards.length > 0) {
+    if (state.phase === 'main') {
+      result.playableProgress = [...new Set(player.progressCards)].filter((c) => c !== 'alchemist');
+    } else if (state.phase === 'rollDice' && !state.hasRolled) {
+      result.playableProgress = player.progressCards.includes('alchemist') ? ['alchemist'] : [];
+    }
   }
 
   return result;

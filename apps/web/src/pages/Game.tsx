@@ -1,4 +1,10 @@
-import { type EdgeId, KNIGHT_COST, SHIP_COST, type VertexId } from '@catan/shared';
+import {
+  type EdgeId,
+  KNIGHT_COST,
+  type ProgressCard,
+  SHIP_COST,
+  type VertexId,
+} from '@catan/shared';
 import { useMemo, useState } from 'react';
 import { Board, type BoardMode } from '../components/Board.js';
 import { CitiesKnights } from '../components/CitiesKnights.js';
@@ -9,6 +15,7 @@ import {
   GoldChoiceModal,
   KnightModal,
   MonopolyModal,
+  ProgressModal,
   ProposeTradeModal,
   StealModal,
   YearOfPlentyModal,
@@ -21,8 +28,10 @@ import {
   canAfford,
   isCK,
   isMyTurn,
+  knightNextToRobber,
   landTiles,
   legalCities,
+  legalKnightMoves,
   legalKnightSpots,
   legalRoads,
   legalSettlements,
@@ -33,8 +42,8 @@ import {
 import { emitAction } from '../socket.js';
 import { useStore } from '../store.js';
 
-type UiMode = BoardMode | 'roadBuilding';
-type RobberIntent = 'move' | 'knight';
+type UiMode = BoardMode | 'roadBuilding' | 'progressRoad';
+type RobberIntent = 'move' | 'knight' | 'bishop' | 'chase';
 
 export function GameScreen({ onLeave }: { onLeave: () => void }) {
   const view = useStore((s) => s.game)!;
@@ -46,6 +55,9 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
     null,
   );
   const [knightVertex, setKnightVertex] = useState<string | null>(null);
+  const [knightMoveFrom, setKnightMoveFrom] = useState<string | null>(null);
+  const [chaseFrom, setChaseFrom] = useState<string | null>(null);
+  const [progressCard, setProgressCard] = useState<ProgressCard | null>(null);
   const [modal, setModal] = useState<null | 'bank' | 'propose' | 'yop' | 'mono'>(null);
 
   const me = getMe(view);
@@ -60,14 +72,17 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
   if (myTurn && isSetup) activeMode = view.setupAwaiting === 'road' ? 'road' : 'settlement';
   else if (myTurn && view.phase === 'moveRobber') activeMode = 'robber';
 
-  const boardMode: BoardMode = activeMode === 'roadBuilding' ? 'road' : activeMode;
+  const boardMode: BoardMode =
+    activeMode === 'roadBuilding' || activeMode === 'progressRoad' ? 'road' : activeMode;
 
   const legalVertices = useMemo(() => {
     if (boardMode === 'settlement') return new Set(legalSettlements(view, isSetup));
     if (boardMode === 'city') return new Set(legalCities(view));
     if (boardMode === 'knight') return new Set(legalKnightSpots(view));
+    if (boardMode === 'knightMove' && knightMoveFrom)
+      return new Set(legalKnightMoves(view, knightMoveFrom));
     return new Set<VertexId>();
-  }, [view, boardMode, isSetup]);
+  }, [view, boardMode, isSetup, knightMoveFrom]);
 
   const legalEdges = useMemo(() => {
     if (boardMode === 'road') return new Set(legalRoads(view, isSetup));
@@ -85,6 +100,8 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
   const reset = () => {
     setUiMode('none');
     setPendingRoads([]);
+    setKnightMoveFrom(null);
+    setChaseFrom(null);
   };
 
   const onVertex = (v: VertexId) => {
@@ -92,15 +109,21 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       emitAction(isSetup ? { type: 'placeSettlement', vertex: v } : { type: 'buildSettlement', vertex: v });
     else if (boardMode === 'city') emitAction({ type: 'buildCity', vertex: v });
     else if (boardMode === 'knight') emitAction({ type: 'buildKnight', vertex: v });
+    else if (boardMode === 'knightMove' && knightMoveFrom)
+      emitAction({ type: 'moveKnight', from: knightMoveFrom, to: v });
     reset();
   };
 
   const onEdge = (e: EdgeId) => {
-    if (activeMode === 'roadBuilding') {
+    if (activeMode === 'roadBuilding' || activeMode === 'progressRoad') {
       const next = pendingRoads.includes(e) ? pendingRoads : [...pendingRoads, e].slice(0, 2);
       setPendingRoads(next);
       if (next.length === 2) {
-        emitAction({ type: 'playRoadBuilding', edges: next });
+        emitAction(
+          activeMode === 'progressRoad'
+            ? { type: 'playProgress', card: 'roadBuilding', params: { edges: next } }
+            : { type: 'playRoadBuilding', edges: next },
+        );
         reset();
       }
       return;
@@ -114,19 +137,47 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
   };
 
   const onTile = (hex: string) => {
+    // Bishop moves the robber and auto-steals from everyone adjacent — no target prompt.
+    if (robberIntentEffective === 'bishop') {
+      emitAction({ type: 'playProgress', card: 'bishop', params: { hex } });
+      reset();
+      return;
+    }
     const targets = robberTargets(view, hex);
-    const fire = (stealFrom: string | null) =>
-      emitAction(
-        robberIntentEffective === 'knight'
-          ? { type: 'playKnight', hex, stealFrom }
-          : { type: 'moveRobber', hex, stealFrom },
-      );
+    const fire = (stealFrom: string | null) => {
+      if (robberIntentEffective === 'knight') emitAction({ type: 'playKnight', hex, stealFrom });
+      else if (robberIntentEffective === 'chase' && chaseFrom)
+        emitAction({ type: 'chaseRobber', from: chaseFrom, hex, stealFrom });
+      else emitAction({ type: 'moveRobber', hex, stealFrom });
+    };
     if (targets.length > 1) {
       setSteal({ hex, targets });
     } else {
       fire(targets[0]?.id ?? null);
       reset();
     }
+  };
+
+  const onPlayProgress = (card: ProgressCard) => {
+    if (card === 'roadBuilding') {
+      setUiMode('progressRoad');
+      setPendingRoads([]);
+    } else if (card === 'bishop') {
+      setUiMode('robber');
+      setRobberIntent('bishop');
+    } else {
+      setProgressCard(card);
+    }
+  };
+
+  const onMoveKnight = (vertex: string) => {
+    setKnightMoveFrom(vertex);
+    setUiMode('knightMove');
+  };
+  const onChaseKnight = (vertex: string) => {
+    setChaseFrom(vertex);
+    setRobberIntent('chase');
+    setUiMode('robber');
   };
 
   const playDev = (card: string) => {
@@ -179,7 +230,7 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       <div className="sidebar">
         <DiceTimer view={view} timer={timer} />
         <Hand view={view} />
-        <CitiesKnights view={view} />
+        <CitiesKnights view={view} onPlayProgress={onPlayProgress} />
 
         <div className="actionbar">
           {view.phase === 'rollDice' && isCurrent && !view.hasRolled && (
@@ -260,9 +311,10 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
               Cancel
             </button>
           )}
-          {activeMode === 'roadBuilding' && (
+          {(activeMode === 'roadBuilding' || activeMode === 'progressRoad') && (
             <span className="muted">Pick 2 roads ({pendingRoads.length}/2)</span>
           )}
+          {activeMode === 'knightMove' && <span className="muted">Choose where to move the knight.</span>}
         </div>
 
         {incomingTrade && (
@@ -310,22 +362,33 @@ export function GameScreen({ onLeave }: { onLeave: () => void }) {
       {view.yourPendingDiscard > 0 && <DiscardModal view={view} />}
       {view.yourPendingGold > 0 && <GoldChoiceModal view={view} />}
       {knightVertex && (
-        <KnightModal view={view} vertex={knightVertex} onClose={() => setKnightVertex(null)} />
+        <KnightModal
+          view={view}
+          vertex={knightVertex}
+          canAct={canBuild}
+          nearRobber={knightNextToRobber(view, knightVertex)}
+          onMove={onMoveKnight}
+          onChase={onChaseKnight}
+          onClose={() => setKnightVertex(null)}
+        />
       )}
       {steal && (
         <StealModal
           targets={steal.targets}
           onPick={(id) => {
-            emitAction(
-              robberIntentEffective === 'knight'
-                ? { type: 'playKnight', hex: steal.hex, stealFrom: id }
-                : { type: 'moveRobber', hex: steal.hex, stealFrom: id },
-            );
+            if (robberIntentEffective === 'knight')
+              emitAction({ type: 'playKnight', hex: steal.hex, stealFrom: id });
+            else if (robberIntentEffective === 'chase' && chaseFrom)
+              emitAction({ type: 'chaseRobber', from: chaseFrom, hex: steal.hex, stealFrom: id });
+            else emitAction({ type: 'moveRobber', hex: steal.hex, stealFrom: id });
             setSteal(null);
             reset();
           }}
           onCancel={() => setSteal(null)}
         />
+      )}
+      {progressCard && (
+        <ProgressModal view={view} card={progressCard} onClose={() => setProgressCard(null)} />
       )}
       {modal === 'bank' && <BankTradeModal view={view} onClose={() => setModal(null)} />}
       {modal === 'propose' && <ProposeTradeModal view={view} onClose={() => setModal(null)} />}
