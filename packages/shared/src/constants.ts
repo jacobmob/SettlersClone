@@ -3,6 +3,7 @@ import type {
   CommodityCounts,
   DevCardType,
   ImprovementTrack,
+  ProgressCard,
   Resource,
   ResourceCounts,
 } from './types.js';
@@ -42,6 +43,81 @@ export const TRACK_COMMODITY: Record<ImprovementTrack, Commodity> = {
   politics: 'coin',
   science: 'paper',
 };
+
+/** Which discipline deck each progress card is drawn from. */
+export const PROGRESS_TRACK: Record<ProgressCard, ImprovementTrack> = {
+  alchemist: 'science',
+  crane: 'science',
+  irrigation: 'science',
+  medicine: 'science',
+  mining: 'science',
+  printer: 'science',
+  roadBuilding: 'science',
+  smith: 'science',
+  bishop: 'politics',
+  constitution: 'politics',
+  deserter: 'politics',
+  warlord: 'politics',
+  masterMerchant: 'trade',
+  merchantFleet: 'trade',
+  resourceMonopoly: 'trade',
+  tradeMonopoly: 'trade',
+};
+
+/** Player-facing names and a one-line description for each progress card. */
+export const PROGRESS_INFO: Record<ProgressCard, { label: string; desc: string }> = {
+  alchemist: { label: 'Alchemist', desc: 'Set the two number dice before your next roll.' },
+  crane: { label: 'Crane', desc: 'Your next city improvement costs 1 fewer commodity.' },
+  irrigation: { label: 'Irrigation', desc: '+2 wheat for each field your buildings border.' },
+  medicine: { label: 'Medicine', desc: 'Build one city this turn for 2 ore + 1 wheat.' },
+  mining: { label: 'Mining', desc: '+2 ore for each mountain your buildings border.' },
+  printer: { label: 'Printer', desc: 'Gain 1 victory point (kept, face-up).' },
+  roadBuilding: { label: 'Road Building', desc: 'Build up to 2 roads for free.' },
+  smith: { label: 'Smith', desc: 'Promote up to 2 of your knights for free.' },
+  bishop: { label: 'Bishop', desc: 'Move the robber and steal from every adjacent player.' },
+  constitution: { label: 'Constitution', desc: 'Gain 1 victory point (kept, face-up).' },
+  deserter: { label: 'Deserter', desc: 'An opponent loses a knight; you gain one to deploy.' },
+  warlord: { label: 'Warlord', desc: 'Activate all of your knights for free.' },
+  masterMerchant: { label: 'Master Merchant', desc: 'Take 2 cards from a player with more points.' },
+  merchantFleet: { label: 'Merchant Fleet', desc: 'Trade one resource at 2:1 this turn.' },
+  resourceMonopoly: { label: 'Resource Monopoly', desc: 'Take up to 2 of a resource from each opponent.' },
+  tradeMonopoly: { label: 'Trade Monopoly', desc: 'Take 1 of a commodity from each opponent.' },
+};
+
+export const PROGRESS_HAND_LIMIT = 4;
+
+/** Build the three discipline decks (drawn from the end). */
+export function buildProgressDecks(): Record<ImprovementTrack, ProgressCard[]> {
+  const make = (entries: [ProgressCard, number][]): ProgressCard[] => {
+    const out: ProgressCard[] = [];
+    for (const [card, n] of entries) for (let i = 0; i < n; i++) out.push(card);
+    return out;
+  };
+  return {
+    science: make([
+      ['alchemist', 2],
+      ['crane', 2],
+      ['irrigation', 2],
+      ['medicine', 2],
+      ['mining', 2],
+      ['printer', 1],
+      ['roadBuilding', 2],
+      ['smith', 2],
+    ]),
+    politics: make([
+      ['bishop', 2],
+      ['constitution', 1],
+      ['deserter', 2],
+      ['warlord', 2],
+    ]),
+    trade: make([
+      ['masterMerchant', 2],
+      ['merchantFleet', 2],
+      ['resourceMonopoly', 4],
+      ['tradeMonopoly', 2],
+    ]),
+  };
+}
 
 /** Commodities needed to go from `level` to `level + 1`. */
 export function improvementCost(level: number): number {

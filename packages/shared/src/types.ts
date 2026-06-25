@@ -17,6 +17,52 @@ export interface Knight {
   owner: string;
   level: number; // 1 basic, 2 strong, 3 mighty
   active: boolean;
+  /** Has this knight already acted (moved/displaced/chased/activated) this turn? */
+  moved: boolean;
+}
+
+/**
+ * Cities & Knights progress cards, grouped by the discipline (event-die face)
+ * whose deck they belong to. This is the implemented subset; cards needing
+ * brand-new board pieces (merchant, city walls, etc.) are intentionally omitted.
+ */
+export type ProgressCard =
+  // science (paper)
+  | 'alchemist'
+  | 'crane'
+  | 'irrigation'
+  | 'medicine'
+  | 'mining'
+  | 'printer'
+  | 'roadBuilding'
+  | 'smith'
+  // politics (coin)
+  | 'bishop'
+  | 'constitution'
+  | 'deserter'
+  | 'warlord'
+  // trade (cloth)
+  | 'masterMerchant'
+  | 'merchantFleet'
+  | 'resourceMonopoly'
+  | 'tradeMonopoly';
+
+/** Card-specific arguments supplied when a progress card is played. */
+export interface ProgressParams {
+  resource?: Resource;
+  commodity?: Commodity;
+  /** merchantFleet: the resource granted a 2:1 bank rate this turn. */
+  tradeResource?: Resource;
+  /** roadBuilding: up to two free road edges. */
+  edges?: EdgeId[];
+  /** smith: up to two of your knights to promote for free. */
+  vertices?: VertexId[];
+  /** bishop: where to move the robber. */
+  hex?: string;
+  /** deserter / masterMerchant: the targeted opponent. */
+  targetPlayer?: string;
+  /** alchemist: the two die faces to lock in for your next roll. */
+  dice?: [number, number];
 }
 
 export type TileType = Resource | 'desert' | 'water' | 'gold';
@@ -99,6 +145,12 @@ export interface Player {
   commodities: CommodityCounts;
   improvements: Record<ImprovementTrack, number>;
   defenderPoints: number;
+  /** Progress cards held in hand (max 4). */
+  progressCards: ProgressCard[];
+  /** Permanent victory points from Constitution / Printer (face-up, public). */
+  progressVP: number;
+  /** Turn-scoped progress-card effects, reset at the start of each turn. */
+  progressFlags: { crane: boolean; medicine: boolean; fleetResource: Resource | null };
 }
 
 export type GamePhase =
@@ -231,6 +283,10 @@ export interface GameState {
   barbarianPosition: number;
   /** Holder of each discipline's metropolis (highest improvement >= 4). */
   metropolis: Record<ImprovementTrack, string | null>;
+  /** Progress-card draw decks per discipline (drawn from the end). */
+  progressDecks: Record<ImprovementTrack, ProgressCard[]>;
+  /** Alchemist: dice locked in for the current player's next roll. */
+  pendingAlchemist: [number, number] | null;
 }
 
 // --- Actions (player intents) ---
@@ -266,6 +322,9 @@ export type Action =
   | { type: 'buildKnight'; vertex: VertexId }
   | { type: 'activateKnight'; vertex: VertexId }
   | { type: 'promoteKnight'; vertex: VertexId }
+  | { type: 'moveKnight'; from: VertexId; to: VertexId }
+  | { type: 'chaseRobber'; from: VertexId; hex: string; stealFrom: string | null }
+  | { type: 'playProgress'; card: ProgressCard; params?: ProgressParams }
   | { type: 'endTurn' }
   | { type: 'requestSpecialBuild' }
   | { type: 'endSpecialBuild' };

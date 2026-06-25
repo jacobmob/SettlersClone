@@ -13,6 +13,7 @@ import type {
   LogEntry,
   PlayerColor,
   Port,
+  ProgressCard,
   ResourceCounts,
   Road,
   TradeOffer,
@@ -37,12 +38,15 @@ export interface PublicPlayer {
   improvements: Record<ImprovementTrack, number>;
   defenderPoints: number;
   commodityCount: number;
+  progressVP: number;
+  progressCardCount: number;
   // Present only for the viewing player:
   resources?: ResourceCounts;
   commodities?: CommodityCounts;
   devCards?: DevCardType[];
   newDevCards?: DevCardType[];
   hasPlayedDevCardThisTurn?: boolean;
+  progressCards?: ProgressCard[];
 }
 
 export interface GameView {
@@ -111,6 +115,8 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
       improvements: p.improvements,
       defenderPoints: p.defenderPoints,
       commodityCount: p.commodities.paper + p.commodities.cloth + p.commodities.coin,
+      progressVP: p.progressVP,
+      progressCardCount: p.progressCards.length,
     };
     if (p.id === viewerId) {
       base.resources = p.resources;
@@ -118,6 +124,7 @@ export function redactStateForPlayer(state: GameState, viewerId: string): GameVi
       base.devCards = p.devCards;
       base.newDevCards = p.newDevCards;
       base.hasPlayedDevCardThisTurn = p.hasPlayedDevCardThisTurn;
+      base.progressCards = p.progressCards;
     }
     return base;
   });
