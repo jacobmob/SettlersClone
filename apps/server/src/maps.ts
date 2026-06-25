@@ -1,4 +1,4 @@
-import { type EditorTile, type MapDef, makeCustomMap } from '@catan/shared';
+import { type EditorPort, type EditorTile, type MapDef, makeCustomMap } from '@catan/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 import { type AuthedRequest, authenticate } from './auth.js';
@@ -9,11 +9,17 @@ export const mapsRouter: Router = Router();
 const cube = z.object({ x: z.number(), y: z.number(), z: z.number() });
 const editorTile = z.object({
   coord: cube,
-  kind: z.enum(['water', 'land', 'desert', 'gold']),
+  kind: z.enum(['water', 'land', 'desert', 'gold', 'wood', 'brick', 'sheep', 'wheat', 'ore']),
+});
+const editorPort = z.object({
+  hex: cube,
+  dir: z.number().int().min(0).max(5),
+  type: z.enum(['any', 'brick', 'wood', 'sheep', 'wheat', 'ore']),
 });
 const saveSchema = z.object({
   name: z.string().min(1).max(40),
-  tiles: z.array(editorTile).min(1).max(120),
+  tiles: z.array(editorTile).min(1).max(300),
+  ports: z.array(editorPort).max(40).optional(),
 });
 
 /** List every custom map (shared library — this is for playing with friends). */
@@ -51,7 +57,12 @@ mapsRouter.post('/maps', authenticate, async (req: AuthedRequest, res) => {
   const created = await prisma.customMap.create({
     data: { name: parsed.data.name, ownerId: req.user!.userId, def: {} },
   });
-  const def = makeCustomMap(created.id, parsed.data.name, parsed.data.tiles as EditorTile[]);
+  const def = makeCustomMap(
+    created.id,
+    parsed.data.name,
+    parsed.data.tiles as EditorTile[],
+    (parsed.data.ports ?? []) as EditorPort[],
+  );
   await prisma.customMap.update({ where: { id: created.id }, data: { def: def as object } });
   res.json({ id: created.id, name: created.name });
 });

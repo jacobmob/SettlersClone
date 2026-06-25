@@ -1,5 +1,5 @@
 import { type Cube, axialToCube, oddRToCube } from './coords.js';
-import type { HexDef, MapDef, PortType, Resource, TileType } from './types.js';
+import type { HexDef, MapDef, PortDef, PortType, Resource, TileType } from './types.js';
 
 /** All axial coords within a hexagon of the given radius (centred at origin). */
 function hexagon(radius: number): Cube[] {
@@ -130,11 +130,34 @@ export function getMap(id: string): MapDef {
 
 // --- custom maps (the in-app editor) ---
 
-export type EditorTileKind = 'water' | 'land' | 'desert' | 'gold';
+/**
+ * What the editor can paint onto a hex:
+ * - 'land' draws a random resource + number at game start (the default).
+ * - 'water' / 'desert' / 'gold' are fixed terrain.
+ * - a specific resource ('wood'…'ore') fixes that terrain so the painter can
+ *   build deliberate layouts (e.g. a ring of forest) while leaving the rest random.
+ */
+export type EditorTileKind =
+  | 'water'
+  | 'land'
+  | 'desert'
+  | 'gold'
+  | 'wood'
+  | 'brick'
+  | 'sheep'
+  | 'wheat'
+  | 'ore';
 
 export interface EditorTile {
   coord: Cube;
   kind: EditorTileKind;
+}
+
+/** A port placed in the editor: a land hex plus an outward edge direction (0-5). */
+export interface EditorPort {
+  hex: Cube;
+  dir: number;
+  type: PortType;
 }
 
 const STD_NUMBERS = [5, 2, 6, 3, 8, 10, 9, 12, 11, 4, 8, 10, 9, 4, 5, 6, 3, 11];
@@ -155,29 +178,40 @@ function cycle<T>(source: readonly T[], n: number): T[] {
 
 /**
  * Build a valid MapDef from painted editor tiles. 'land' tiles draw a random
- * resource + number at game start (per the product requirement); water/desert/
- * gold are fixed. Resource/number/port bags are generated balanced and sized to
- * the painted board, so the result always satisfies createBoard.
+ * resource + number at game start (per the product requirement); a painted
+ * resource/desert/gold/water tile is fixed terrain. Resource/number bags are
+ * generated balanced and sized to the painted board, so the result always
+ * satisfies createBoard. Explicit `ports` (placed in the editor) override the
+ * automatic coastal distribution; with none, ports are auto-placed as before.
  */
-export function makeCustomMap(id: string, name: string, tiles: EditorTile[]): MapDef {
+export function makeCustomMap(
+  id: string,
+  name: string,
+  tiles: EditorTile[],
+  ports: EditorPort[] = [],
+): MapDef {
   const hexes: HexDef[] = tiles.map((t) =>
     t.kind === 'land' ? { coord: t.coord } : { coord: t.coord, fixedType: t.kind as TileType },
   );
+  // Only 'land' tiles draw from the resource bag; fixed terrain does not.
   const landCount = tiles.filter((t) => t.kind === 'land').length;
-  const goldCount = tiles.filter((t) => t.kind === 'gold').length;
+  // Every tile that bears a number (i.e. anything but water and desert) needs one.
+  const numberedCount = tiles.filter((t) => t.kind !== 'water' && t.kind !== 'desert').length;
   const resourceBag: TileType[] = cycle<Resource>(
     ['wood', 'wheat', 'sheep', 'brick', 'ore'],
     landCount,
   );
-  const numberBag = cycle(STD_NUMBERS, landCount + goldCount);
+  const numberBag = cycle(STD_NUMBERS, numberedCount);
+  const portDefs: PortDef[] = ports.map((p) => ({ hex: p.hex, dir: p.dir, type: p.type }));
   return {
     id,
     name,
     playerRange: [2, 6],
     hexes,
-    ports: [],
+    ports: portDefs,
     resourceBag,
     numberBag,
-    portBag: DEFAULT_PORTS,
+    // Only used to auto-place ports when none were painted in the editor.
+    portBag: portDefs.length ? undefined : DEFAULT_PORTS,
   };
 }

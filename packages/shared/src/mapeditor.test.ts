@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createBoard } from './board.js';
 import { axialToCube, cornersOfHex } from './coords.js';
 import { createGame } from './game.js';
-import { type EditorTile, makeCustomMap } from './maps.js';
+import { type EditorPort, type EditorTile, makeCustomMap } from './maps.js';
 import { Rng } from './rng.js';
 import { PLAYER_COLORS } from './types.js';
 import { redactStateForPlayer } from './view.js';
@@ -33,6 +33,40 @@ describe('makeCustomMap', () => {
     expect(board.tiles[board.robberHex]!.type).toBe('desert');
     const numbered = Object.values(board.tiles).filter((t) => t.number !== null);
     expect(numbered.length).toBe(3);
+  });
+
+  it('keeps painted resource tiles fixed and still numbers them', () => {
+    const fixedTiles: EditorTile[] = [
+      { coord: axialToCube(0, 0), kind: 'wood' },
+      { coord: axialToCube(1, 0), kind: 'wood' },
+      { coord: axialToCube(0, 1), kind: 'land' },
+      { coord: axialToCube(-1, 1), kind: 'ore' },
+    ];
+    const def = makeCustomMap('m2', 'Fixed', fixedTiles);
+    expect(def.resourceBag.length).toBe(1); // only the single 'land' tile is random
+    expect(def.numberBag.length).toBe(4); // all four bear numbers
+
+    const board = createBoard(def, new Rng(7));
+    const types = Object.values(board.tiles).map((t) => t.type);
+    expect(types.filter((t) => t === 'wood').length).toBeGreaterThanOrEqual(2);
+    expect(types.filter((t) => t === 'ore').length).toBeGreaterThanOrEqual(1);
+    expect(Object.values(board.tiles).every((t) => t.number !== null)).toBe(true);
+  });
+
+  it('uses ports placed in the editor verbatim', () => {
+    const portTiles: EditorTile[] = [
+      { coord: axialToCube(0, 0), kind: 'land' },
+      { coord: axialToCube(1, 0), kind: 'water' },
+    ];
+    const ports: EditorPort[] = [{ hex: axialToCube(0, 0), dir: 1, type: 'wheat' }];
+    const def = makeCustomMap('m3', 'Ports', portTiles, ports);
+    expect(def.ports).toHaveLength(1);
+    expect(def.portBag).toBeUndefined();
+
+    const board = createBoard(def, new Rng(5));
+    expect(board.ports).toHaveLength(1);
+    expect(board.ports[0]!.type).toBe('wheat');
+    expect(board.ports[0]!.vertices.length).toBe(2);
   });
 });
 
